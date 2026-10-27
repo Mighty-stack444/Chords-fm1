@@ -10,8 +10,8 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version (X.Y or X.Y.Z)"
-        default: "0.1"
+        description: "Version (X.Y or X.Y.Z); empty: the one in the VERSION file"
+        default: ""
 permissions:
   contents: read
   pages: write
@@ -19,13 +19,17 @@ permissions:
 concurrency:
   group: pages
   cancel-in-progress: true
-env:
-  VERSION: ${{ github.event.inputs.version || '0.1' }}
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Version
+        run: |
+          V="${{ github.event.inputs.version }}"
+          [ -n "$V" ] || V="$(tr -d ' \r\n' < VERSION)"
+          echo "VERSION=$V" >> "$GITHUB_ENV"
+          echo "Building CHORDS $V"
       - name: Python packages
         run: pip install Pillow
       - name: JieLi toolchain (clang 4.0.1 for pi32v2)

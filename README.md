@@ -75,6 +75,9 @@ fetches from their servers. The simplest way, from a phone or any computer:
 4. Open the site's **Install** page in Chrome or Edge with the FM-1 connected by USB. On Android,
    Chrome with a USB-OTG cable works for Web MIDI.
 
+The version number is in the `VERSION` file: change it with each update so the installer and the
+FM-1 show which one you have.
+
 Locally instead: see [BUILDING.md](BUILDING.md) (`./build.sh`, then
 `python3 tools/fm1_install.py build/chords.fwsc`).
 
