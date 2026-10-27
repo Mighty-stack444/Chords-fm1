@@ -113,19 +113,36 @@ export class Updater {
     this.log = log || (() => {});
   }
 
-  // every in/out pair with the same port name that answers the handshake
+  // the MIDI ports the browser sees (shown when nothing answers, to help find the FM-1)
+  portNames() {
+    const n = (p) => `${p.name || "?"}${p.manufacturer ? " (" + p.manufacturer + ")" : ""}`;
+    return { inputs: [...this.access.inputs.values()].map(n), outputs: [...this.access.outputs.values()].map(n) };
+  }
+
+  // every in/out pair that answers the handshake. Ports whose names look like an FM-1 go first;
+  // then every other port: custom firmware (and Android) name the FM-1 in many ways, and the
+  // handshake is M-VAVE's own SysEx, which other gear ignores.
   async find(filter) {
-    const outs = [...this.access.outputs.values()];
-    for (const input of this.access.inputs.values()) {
-      if (input.state === "disconnected") continue;
-      if (!/fm-1|felucca|ota|composite|sinco|usb-midi/i.test(input.name || "")) continue;   // never probe other gear
-      const output = outs.find((o) => o.name === input.name) || (outs.length === 1 ? outs[0] : null);
-      if (!output) continue;
-      try { await input.open(); await output.open(); } catch (_) { continue; }
-      const link = new Link(input, output);
-      const id = await handshake(link, 2);
-      if (id && (!filter || filter(id))) return { link, id, name: input.name };
-      link.close();
+    const LIKELY = /fm-1|fm1|m-vave|mvave|felucca|ota|composite|sinco|usb-midi|midi|chords|x0x|fomni|groove|sloop/i;
+    const outs = [...this.access.outputs.values()].filter((o) => o.state !== "disconnected");
+    const ins = [...this.access.inputs.values()].filter((i) => i.state !== "disconnected");
+    const likely = (p) => LIKELY.test(`${p.name || ""} ${p.manufacturer || ""}`);
+    const base = (s) => (s || "").toLowerCase().replace(/\b(in|out|input|output|port|midi)\b|[^a-z0-9]/g, "");
+    ins.sort((a, b) => likely(b) - likely(a));
+    for (const input of ins) {
+      // the outputs to try with this input: the same name, a similar name, the same maker, then any
+      const ranked = outs.map((o) => ({ o, s: (o.name === input.name ? 4 : 0) + (base(o.name) === base(input.name) ? 2 : 0) +
+                                          (o.manufacturer && o.manufacturer === input.manufacturer ? 1 : 0) + (likely(o) ? 0.5 : 0) }))
+        .sort((a, b) => b.s - a.s).map((x) => x.o);
+      try { await input.open(); } catch (_) { continue; }
+      for (const output of ranked) {
+        try { await output.open(); } catch (_) { continue; }
+        const link = new Link(input, output);
+        const id = await handshake(link, 2);
+        if (id && (!filter || filter(id))) return { link, id, name: input.name };
+        link.close();
+        if (id) break;                       // this pair answered, but it is not the one wanted
+      }
     }
     return null;
   }
