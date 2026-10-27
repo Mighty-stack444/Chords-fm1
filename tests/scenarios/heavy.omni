@@ -1,0 +1,41 @@
+wait 100
+turn PRESET 4
+expect par27 4
+tap FX
+spin K1 60
+spin K2 60
+spin K3 60
+spin K4 60
+tap SEL
+spin K1 3
+spin K2 1
+spin K3 2
+spin K4 50
+tap EDIT
+spin K1 2
+spin K2 2
+spin K3 2
+spin K4 2
+tap HOME
+spin K1 4
+spin K3 40
+tap EDIT
+tap EDIT
+spin K1 1
+key w0 down
+key w4 down
+midi 90 48 64
+midi 90 50 64
+midi 90 53 64
+midi 90 59 64
+wait 200
+expect voices 12
+wait 5000
+# the CPU guard: a heavy load sheds voices, a light one brings them back
+cpu 95
+wait 1100
+expect polymax <9
+expect voices <9
+cpu 20
+wait 12000
+expect polymax 12

@@ -1,0 +1,333 @@
+# every sound: a I-vi-IV-V progression, its peak level; then every effect on at once
+wait 100
+expect par27 0
+peakreset
+wav sound00.wav
+key w0 down
+wait 450
+key w0 up
+wait 50
+key w5 down
+wait 450
+key w5 up
+wait 50
+key w3 down
+wait 450
+key w3 up
+wait 50
+key w4 down
+wait 450
+key w4 up
+wait 50
+wait 1200
+wavstop
+expect peak_db_max -0.5
+expect peak_db_min -24
+turn PRESET 1
+expect par27 1
+peakreset
+wav sound01.wav
+key w0 down
+wait 450
+key w0 up
+wait 50
+key w5 down
+wait 450
+key w5 up
+wait 50
+key w3 down
+wait 450
+key w3 up
+wait 50
+key w4 down
+wait 450
+key w4 up
+wait 50
+wait 1200
+wavstop
+expect peak_db_max -0.5
+expect peak_db_min -24
+turn PRESET 1
+expect par27 2
+peakreset
+wav sound02.wav
+key w0 down
+wait 450
+key w0 up
+wait 50
+key w5 down
+wait 450
+key w5 up
+wait 50
+key w3 down
+wait 450
+key w3 up
+wait 50
+key w4 down
+wait 450
+key w4 up
+wait 50
+wait 1200
+wavstop
+expect peak_db_max -0.5
+expect peak_db_min -24
+turn PRESET 1
+expect par27 3
+peakreset
+wav sound03.wav
+key w0 down
+wait 450
+key w0 up
+wait 50
+key w5 down
+wait 450
+key w5 up
+wait 50
+key w3 down
+wait 450
+key w3 up
+wait 50
+key w4 down
+wait 450
+key w4 up
+wait 50
+wait 1200
+wavstop
+expect peak_db_max -0.5
+expect peak_db_min -24
+turn PRESET 1
+expect par27 4
+peakreset
+wav sound04.wav
+key w0 down
+wait 450
+key w0 up
+wait 50
+key w5 down
+wait 450
+key w5 up
+wait 50
+key w3 down
+wait 450
+key w3 up
+wait 50
+key w4 down
+wait 450
+key w4 up
+wait 50
+wait 1200
+wavstop
+expect peak_db_max -0.5
+expect peak_db_min -24
+turn PRESET 1
+expect par27 5
+peakreset
+wav sound05.wav
+key w0 down
+wait 450
+key w0 up
+wait 50
+key w5 down
+wait 450
+key w5 up
+wait 50
+key w3 down
+wait 450
+key w3 up
+wait 50
+key w4 down
+wait 450
+key w4 up
+wait 50
+wait 1200
+wavstop
+expect peak_db_max -0.5
+expect peak_db_min -24
+turn PRESET 1
+expect par27 6
+peakreset
+wav sound06.wav
+key w0 down
+wait 450
+key w0 up
+wait 50
+key w5 down
+wait 450
+key w5 up
+wait 50
+key w3 down
+wait 450
+key w3 up
+wait 50
+key w4 down
+wait 450
+key w4 up
+wait 50
+wait 1200
+wavstop
+expect peak_db_max -0.5
+expect peak_db_min -24
+turn PRESET 1
+expect par27 7
+peakreset
+wav sound07.wav
+key w0 down
+wait 450
+key w0 up
+wait 50
+key w5 down
+wait 450
+key w5 up
+wait 50
+key w3 down
+wait 450
+key w3 up
+wait 50
+key w4 down
+wait 450
+key w4 up
+wait 50
+wait 1200
+wavstop
+expect peak_db_max -0.5
+expect peak_db_min -24
+turn PRESET 1
+expect par27 8
+peakreset
+wav sound08.wav
+key w0 down
+wait 450
+key w0 up
+wait 50
+key w5 down
+wait 450
+key w5 up
+wait 50
+key w3 down
+wait 450
+key w3 up
+wait 50
+key w4 down
+wait 450
+key w4 up
+wait 50
+wait 1200
+wavstop
+expect peak_db_max -0.5
+expect peak_db_min -24
+turn PRESET 1
+expect par27 9
+peakreset
+wav sound09.wav
+key w0 down
+wait 450
+key w0 up
+wait 50
+key w5 down
+wait 450
+key w5 up
+wait 50
+key w3 down
+wait 450
+key w3 up
+wait 50
+key w4 down
+wait 450
+key w4 up
+wait 50
+wait 1200
+wavstop
+expect peak_db_max -0.5
+expect peak_db_min -24
+turn PRESET 1
+expect par27 10
+peakreset
+wav sound10.wav
+key w0 down
+wait 450
+key w0 up
+wait 50
+key w5 down
+wait 450
+key w5 up
+wait 50
+key w3 down
+wait 450
+key w3 up
+wait 50
+key w4 down
+wait 450
+key w4 up
+wait 50
+wait 1200
+wavstop
+expect peak_db_max -0.5
+expect peak_db_min -24
+turn PRESET 1
+expect par27 11
+peakreset
+wav sound11.wav
+key w0 down
+wait 450
+key w0 up
+wait 50
+key w5 down
+wait 450
+key w5 up
+wait 50
+key w3 down
+wait 450
+key w3 up
+wait 50
+key w4 down
+wait 450
+key w4 up
+wait 50
+wait 1200
+wavstop
+expect peak_db_max -0.5
+expect peak_db_min -24
+turn PRESET 10
+expect par27 9
+tap FX
+spin K1 60
+spin K2 60
+spin K3 60
+spin K4 60
+tap SEL
+spin K1 4
+spin K2 1
+spin K3 3
+spin K4 50
+tap EDIT
+spin K1 2
+spin K2 2
+spin K3 1
+spin K4 2
+tap HOME
+spin K1 3
+tap ARP
+tap EDIT
+tap EDIT
+spin K1 1
+peakreset
+wav allfx.wav
+tap PLAY
+tapkey w0
+wait 700
+tapkey w5
+wait 700
+tapkey w3
+wait 700
+tapkey w4
+wait 700
+tapkey w7
+wait 700
+tapkey w2
+wait 700
+tap PLAY
+wait 2000
+wavstop
+expect peak_db_max 0
+expect peak_db_min -30
+shot allfx.png

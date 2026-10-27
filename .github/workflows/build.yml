@@ -1,0 +1,67 @@
+# Build CHORDS in the cloud: the firmware package (.fwsc), the browser emulator, and a site with the web
+# installer, published on this repository's GitHub Pages.
+#
+# Once: Settings > Pages > Build and deployment > Source: "GitHub Actions".
+# Then every push to main builds and publishes; or run it by hand (Actions > build > Run workflow).
+name: build
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version (X.Y or X.Y.Z)"
+        default: "0.1"
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+env:
+  VERSION: ${{ github.event.inputs.version || '0.1' }}
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Python packages
+        run: pip install Pillow
+      - name: JieLi toolchain (clang 4.0.1 for pi32v2)
+        run: sh tools/get_toolchain.sh
+      - name: JieLi AC79 SDK (the package uses three of its files)
+        run: git clone --depth 1 --branch AC79NN_SDK_V1.2.1_2023-12-13 https://gitee.com/Jieli-Tech/fw-AC79_AIoT_SDK.git ~/fw-AC79_AIoT_SDK
+      - name: WASI sysroot (for the browser emulator)
+        run: |
+          mkdir -p ~/wasi && cd ~/wasi
+          curl -fsSL https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-24/wasi-sysroot-24.0.tar.gz | tar xz
+          curl -fsSL https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-24/libclang_rt.builtins-wasm32-wasi-24.0.tar.gz | tar xz
+          echo "WASI_SYSROOT=$HOME/wasi/wasi-sysroot-24.0" >> "$GITHUB_ENV"
+          echo "WASI_RT=$HOME/wasi/libclang_rt.builtins-wasm32-wasi-24.0/libclang_rt.builtins-wasm32.a" >> "$GITHUB_ENV"
+      - name: Firmware
+        env:
+          JIELI_DOCKER: "1"          # the toolchain in debian:bookworm-slim, as the upstream build runs it
+        run: ./build.sh --release "$VERSION"
+      - name: Browser emulator
+        run: OM_VERSION="$VERSION" sh web/emu/build.sh
+      - name: Tests (simulator, emulator, update path)
+        run: AC79_SDK=~/fw-AC79_AIoT_SDK sh tests/run_tests.sh
+      - name: Site
+        run: python3 tools/make_pages.py "build/chords-$VERSION.fwsc" "$VERSION" site
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chords-${{ env.VERSION }}-firmware
+          path: build/chords-${{ env.VERSION }}.fwsc
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
