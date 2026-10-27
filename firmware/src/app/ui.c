@@ -4,7 +4,9 @@
  *
  *   white keys     the scale's chords, I II III ... up the keys (more than an octave of them)
  *   black keys     the scale's notes, an octave above (REC swaps the two rows)
- *   ENV / LFO      held with a chord key: one more note in the chord / one fewer
+ *   ENV            held with a chord key: one more note in the chord
+ *   LFO            held: chords play only their root (single notes); pressed twice quickly: locks
+ *                  single notes on (LFO lit), twice again: off
  *   PLAY           HOLD: chords and notes keep sounding until the next one (or HOLD off)
  *   REC            swap the rows: notes on the white keys, chords on the black
  *   ARP            the arpeggiator on / off
@@ -56,6 +58,10 @@ static struct {
     uint32_t enc_t[NE];
     /* what each key started when it went down (so its release lets go of exactly that) */
     uint8_t kn[NKEYS_][OM_MAXCHORD], kcount[NKEYS_], kchord[NKEYS_];
+    uint8_t kfull[NKEYS_];                       /* chord keys: how many notes the full chord has */
+    int8_t kdeg[NKEYS_];                         /* chord keys: the scale degree */
+    uint8_t mono_lock;                           /* LFO pressed twice: single notes stay on */
+    uint32_t lfo_t;                              /* when LFO was last pressed (the double press) */
     int8_t held_chord_key, held_note_key;        /* HOLD: the key whose chord / note is held, -1 none */
     int8_t last_deg;                             /* the chord on the screen: its degree, -1 none */
     uint8_t last_notes[OM_MAXCHORD], last_n;
@@ -129,21 +135,31 @@ static void play_bass(const uint8_t *notes)
         om_bass(notes[0] - 12 * m);
 }
 
+/* single notes: LFO held, or locked on */
+static int single(void) { return ui.mono_lock || (ui.btn >> B_LFO & 1u); }
+
+static void show_chord(const uint8_t *notes, int n, int deg)
+{
+    int i;
+    ui.last_deg = (int8_t)deg;
+    for (i = 0; i < n; i++)
+        ui.last_notes[i] = notes[i];
+    ui.last_n = (uint8_t)n;
+}
+
 static void chord_down(int key, int deg)
 {
     uint8_t notes[OM_MAXCHORD];
-    int n = nvoice(), i, arp = proj.par[P_ARPMODE] != 0;
-    uint32_t b = ui.btn;
-    if (b >> B_ENV & 1u) {                       /* ENV: one more note, LFO: one fewer */
+    int n = nvoice(), full, i, arp = proj.par[P_ARPMODE] != 0;
+    if (ui.btn >> B_ENV & 1u) {                  /* ENV: one more note */
         n++;
         ui.btn_used |= 1u << B_ENV;
     }
-    if (b >> B_LFO & 1u) {
-        n--;
-        ui.btn_used |= 1u << B_LFO;
-    }
-    n = n < 2 ? 2 : n > OM_MAXCHORD ? OM_MAXCHORD : n;
+    full = n < 2 ? 2 : n > OM_MAXCHORD ? OM_MAXCHORD : n;
+    n = single() ? 1 : full;
     n = chord_of(deg, n, notes);
+    ui.kfull[key] = (uint8_t)full;
+    ui.kdeg[key] = (int8_t)deg;
     if (proj.hold && ui.held_chord_key >= 0) {   /* HOLD: the held chord gives way */
         int h = ui.held_chord_key;
         for (i = 0; i < ui.kcount[h]; i++)
@@ -166,10 +182,46 @@ static void chord_down(int key, int deg)
     if (proj.hold)
         ui.held_chord_key = (int8_t)key;
     ui.chords_down++;
-    ui.last_deg = (int8_t)deg;
-    for (i = 0; i < n; i++)
-        ui.last_notes[i] = notes[i];
-    ui.last_n = (uint8_t)n;
+    show_chord(notes, n, deg);
+}
+
+/* LFO pressed or let go: the chords sounding now become single notes, or full chords again. Notes
+ * that stay keep sounding; only the ones that go or come are released or started. */
+static void revoice(void)
+{
+    int k, i, want_single = single(), arp = proj.par[P_ARPMODE] != 0;
+    for (k = 0; k < NKEYS_; k++) {
+        uint8_t notes[OM_MAXCHORD];
+        int n;
+        if (!ui.kchord[k] || !(ui.keys >> k & 1u || (proj.hold && ui.held_chord_key == k)))
+            continue;
+        n = chord_of(ui.kdeg[k], want_single ? 1 : ui.kfull[k], notes);
+        if (arp) {
+            om_arp(notes, n);
+        } else {
+            for (i = n; i < ui.kcount[k]; i++)   /* the notes that go */
+                om_note(ui.kn[k][i], 0, TAG_CHORD);
+            for (i = ui.kcount[k]; i < n; i++)   /* the notes that come */
+                om_note(notes[i], 1, TAG_CHORD);
+            ui.kcount[k] = (uint8_t)n;
+        }
+        for (i = 0; i < n; i++)
+            ui.kn[k][i] = notes[i];
+        show_chord(notes, n, ui.kdeg[k]);
+    }
+}
+
+static void lfo_press(void)
+{
+    uint32_t now = plat_ms();
+    if (ui.lfo_t && now - ui.lfo_t < 400u) {     /* the second press of a double press */
+        ui.mono_lock = (uint8_t)!ui.mono_lock;
+        say("SINGLE NOTE", ui.mono_lock ? "LOCKED" : "OFF");
+        ui.lfo_t = 0;
+    } else {
+        ui.lfo_t = now;
+    }
+    revoice();
 }
 
 static void chord_up(int key)
@@ -456,6 +508,12 @@ static void input(void)
             ui.btn_used &= ~m;
             if (i == B_PLAY)                     /* HOLD on the press */
                 button((int)i);
+            if (i == B_LFO)
+                lfo_press();
+        } else if (i == B_LFO) {
+            if (plat_ms() - ui.lfo_t > 300u)
+                ui.lfo_t = 0;                    /* held, not tapped: no double press from it */
+            revoice();                           /* let go: full chords again, unless locked */
         } else if (!(ui.btn_used & m) && i != B_PLAY && i != B_ENV && i != B_LFO) {
             button((int)i);
         }
@@ -562,7 +620,7 @@ static void draw_main(void)
 {
     char name[24], q[24], t[32];
     int len = om_scale_len(proj.par[P_SCALE]), d, i;
-    uint32_t h = hash(2166136261u, (uint32_t)ui.last_deg | (uint32_t)ui.last_n << 8 | proj.hold << 12 |
+    uint32_t h = hash(2166136261u, (uint32_t)ui.last_deg | (uint32_t)ui.last_n << 8 | proj.hold << 12 | (uint32_t)single() << 14 | (uint32_t)ui.mono_lock << 15 |
                                        proj.layout << 13 | (uint32_t)(ui.last_note & 0xFF) << 16);
     for (i = 0; i < 4; i++)
         h = hash(h, om_sounding[i]);
@@ -617,8 +675,12 @@ static void draw_main(void)
             }
             x = tag(x, y, t, K_GOLD, RGB(50, 44, 18));
         }
-        om_param_text(P_VOICING, proj.par[P_VOICING], t);
-        x = tag(x, y, t, K_LABEL, K_PANEL);
+        if (single())
+            x = tag(x, y, ui.mono_lock ? "1 NOTE LOCK" : "1 NOTE", K_TEXT, K_LINE);
+        else {
+            om_param_text(P_VOICING, proj.par[P_VOICING], t);
+            x = tag(x, y, t, K_LABEL, K_PANEL);
+        }
         if (ui.last_note >= 0) {                 /* the last melody note, at the right */
             scpy(t, OM_NOTE_NAME[ui.last_note % 12]);
             {
@@ -724,6 +786,8 @@ static void leds(void)
         b |= 1u << B_REC;
     if (proj.par[P_ARPMODE] && (!om_arp_on || (ui.frame / 4u) & 1u || !(om_arp_note & 1u)))
         b |= 1u << B_ARP;
+    if (ui.mono_lock)
+        b |= 1u << B_LFO;
     if (proj.leds) {
         for (i = 0; i < NKEYS_; i++)             /* the keys held, or sounding under HOLD */
             if (ui.keys >> i & 1u || (proj.hold && (ui.held_chord_key == (int)i || ui.held_note_key == (int)i)))

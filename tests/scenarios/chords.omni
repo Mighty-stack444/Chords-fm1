@@ -36,16 +36,42 @@ expect on57 1
 expect on60 1
 shot chord_ii7.png
 key w1 up
-# ENV held: one more note (9th chord), LFO: one fewer
+# ENV held: one more note (9th chord)
 press ENV
 tapkey w0
 release ENV
 expect nchord 5
 expect view 0
+# LFO held: single notes; a chord held when LFO goes down drops to its root, and comes back
 press LFO
 tapkey w0
+expect nchord 1
 release LFO
-expect nchord 3
+wait 500
+key w4 down
+wait 30
+expect nsounding 4
+press LFO
+wait 30
+expect nsounding 1
+expect on55 1
+release LFO
+wait 30
+expect nsounding 4
+key w4 up
+wait 1500
+# LFO twice quickly: locked (lit); twice again: off
+tap LFO
+tap LFO
+tapkey w3
+expect nchord 1
+shot single_lock.png
+leds
+wait 500
+tap LFO
+tap LFO
+tapkey w3
+expect nchord 4
 spin K1 -1
 # black keys: the scale's notes, an octave over the chords
 key b0 down

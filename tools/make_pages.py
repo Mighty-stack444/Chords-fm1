@@ -96,7 +96,8 @@ do, and the installer can put M-VAVE's own firmware back. Installing is at your 
 <tr><td>White keys</td><td>The scale's chords, one per key: I, ii, iii... and on into the next octave.</td></tr>
 <tr><td>Black keys</td><td>The scale's notes, an octave above the chords.</td></tr>
 <tr><td>REC</td><td>Swaps the rows: notes on the white keys, chords on the black.</td></tr>
-<tr><td>ENV · LFO</td><td>Held while you play a chord: one more note in it (ENV), or one fewer (LFO).</td></tr>
+<tr><td>ENV</td><td>Held while you play a chord: one more note in it.</td></tr>
+<tr><td>LFO</td><td>Held: chords play single notes (their root). Press it twice quickly to lock single notes on (LFO lights); twice again for chords.</td></tr>
 <tr><td>PLAY</td><td>HOLD: chords and notes keep sounding until the next one. Off lets them go.</td></tr>
 <tr><td>ARP</td><td>The arpeggiator on and off (its mode, rate, tempo and gate are on the Arp page).</td></tr>
 <tr><td>OCT− · OCT+</td><td>The octave (2 to 5).</td></tr>

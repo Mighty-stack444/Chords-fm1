@@ -32,7 +32,8 @@ installer are theirs, unchanged. The instrument and the UI are new.
 | Low-pass, High-pass, Auto-filter, Vibrato | **Filter** page (SEL) |
 | Overdrive, Bitcrush, Waveshape, Compressor | **Drive** page (EDIT) |
 | — | **Setup** page (GLO): arp octaves, tune, MIDI out, key lights |
-| — | **ENV** held with a chord key: one more note; **LFO** held: one fewer |
+| — | **ENV** held with a chord key: one more note |
+| — | **LFO** held: chords play single notes (their root); press it twice quickly to lock single notes on (LFO lights), twice again for chords |
 | — | **SAVE** saves; it also saves by itself when quiet |
 
 MIDI: notes in (USB or the TRS jack) play the current sound; chords and notes go out on channel 1,
@@ -47,6 +48,12 @@ the bass on channel 2.
 - The delay is an 8th note at the Tempo (the web app's was fixed at 120 BPM's 8th) and uses one line
   for both sides, to fit the FM-1's RAM.
 - Vibrato bends the oscillators directly instead of going through a delay line (same rate and depth).
+- **Organ, Brass and Strings have their own sounds.** In the web app all three were the same detuned
+  sawtooths. Here the Organ is drawbars with a percussion, Brass a filter that opens as the note
+  speaks (with a scoop into the pitch), Strings soft, dark sawtooths that swell in with a vibrato.
+  Brass and Strings keep a minimum attack, whatever ATK is set to.
+- **Triangle** is a 4-bit stepped triangle, as on game consoles. A smooth triangle sounds almost like
+  the sine on the FM-1's speaker.
 - **CPU guard**: if the audio load passes 85 %, CHORDS plays fewer voices at once (down to 4), and
   gives them back when the load drops. With every effect on and 12 Strings voices, the load is about
   1.5× FoMni's heaviest; most settings are well under it.

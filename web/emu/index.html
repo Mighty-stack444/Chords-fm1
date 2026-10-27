@@ -83,7 +83,7 @@ kbd { font: 600 .85em ui-monospace, Menlo, monospace; background: var(--card); b
     <ul>
       <li><b>White keys</b> play the scale's chords: I, ii, iii... up the keyboard. <b>Black keys</b> play the scale's notes, an octave higher.</li>
       <li><b>REC</b> swaps them: notes on the white keys, chords on the black.</li>
-      <li><b>ENV</b> held with a chord: one more note in it. <b>LFO</b> held: one fewer.</li>
+      <li><b>ENV</b> held with a chord: one more note in it. <b>LFO</b> held: single notes; press it twice quickly to lock them on, twice again to turn them off.</li>
       <li><b>PLAY</b> is HOLD: chords and notes keep sounding until the next one.</li>
       <li><b>ARP</b> turns the arpeggiator on and off. <b>OCT−</b> / <b>OCT+</b> the octave.</li>
       <li><b>SELECT</b> scale, <b>ALGORITHM</b> root, <b>PRESETS</b> sound.</li>
@@ -102,7 +102,7 @@ kbd { font: 600 .85em ui-monospace, Menlo, monospace; background: var(--card); b
     <h2>Keyboard</h2>
     <ul>
       <li>White keys 1–8: <kbd>Q</kbd>–<kbd>I</kbd>, 9–16: <kbd>A</kbd>–<kbd>K</kbd>. Black keys 1–11: <kbd>1</kbd>–<kbd>0</kbd>, <kbd>-</kbd>.</li>
-      <li>Hold <kbd>Shift</kbd> (ENV) for one more note, <kbd>/</kbd> (LFO) for one fewer.</li>
+      <li>Hold <kbd>Shift</kbd> (ENV) for one more note, <kbd>/</kbd> (LFO) for single notes; tap <kbd>/</kbd> twice to lock them.</li>
       <li><kbd>Space</kbd> HOLD, <kbd>Enter</kbd> swap the rows, <kbd>Esc</kbd> HOME, <kbd>Z</kbd> / <kbd>X</kbd> OCT− / OCT+.</li>
       <li><kbd>↑</kbd> <kbd>↓</kbd> change the scale.</li>
     </ul>
@@ -212,10 +212,10 @@ function hit(c, cls) {
   c.hit = d;
 }
 // what each control does, on hover (the Buttons list below says the same)
-const TIP = { FX: "Sound page", SEL: "Chords page: press a black key, then KNOB 1 / 2 change its chord", ENV: "Hold for a minor chord",
-  LFO: "Hold for a 7th chord (with ENV: m7)", EDIT: "Next page", GLO: "Setup page", HOME: "Play page", SAVE: "Save",
-  ARP: "Chord hold", SEQ: "Rhythm page", PLAY: "Rhythm on / off", REC: "Sync start: the rhythm waits for a chord",
-  "OCT-": "Strings an octave down", "OCT+": "Strings an octave up", SELECT: "Tempo", ALGORITHM: "Rhythm", PRESETS: "Transpose",
+const TIP = { FX: "Effects page", SEL: "Filter page", ENV: "Hold: one more note in the chord",
+  LFO: "Hold: single notes. Twice quickly: lock single notes", EDIT: "Next page", GLO: "Setup page", HOME: "Play page", SAVE: "Save",
+  ARP: "Arpeggiator on / off", SEQ: "Arp page", PLAY: "Hold on / off", REC: "Swap chords and notes",
+  "OCT-": "Octave down", "OCT+": "Octave up", SELECT: "Scale", ALGORITHM: "Root", PRESETS: "Sound",
   MASTER: "Volume" };
 for (const [n, c] of [...Object.entries(buttons), ...Object.entries(knobs)]) if (TIP[n]) c.g.setAttribute("aria-description", TIP[n]);
 for (const k of Object.values(knobs)) hit(k, "knob");

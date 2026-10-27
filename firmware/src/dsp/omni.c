@@ -233,28 +233,32 @@ void om_param_text(int i, int v, char *b)
 }
 
 /* ========================================================= instruments === */
-/* the web app's IN table. fm: Tone.FMSynth (carrier sine), else Tone.Synth. Attack and release come
- * from the ATK / REL controls for every instrument (the web app's aEn() sets them after creation). */
-enum { W_SINE, W_TRI, W_SAW, W_SQUARE };
+/* the web app's IN table. kind: K_FM is Tone.FMSynth (carrier sine), K_OSC Tone.Synth; Organ, Brass
+ * and Strings have engines of their own here (in the web app all three were the same detuned saws).
+ * Attack and release come from the ATK / REL controls; an instrument's attack never goes under its
+ * own floor (att), so Strings always swell and Brass always speaks. */
+enum { W_SINE, W_TRI, W_SAW, W_SQUARE, W_TRI4 };
+enum { K_OSC, K_FM, K_ORGAN, K_BRASS, K_STRINGS };
 typedef struct {
-    uint8_t fm, wave, count, mwave;
+    uint8_t fm, wave, count, mwave;               /* fm: the kind, K_* */
     float spread, harm, index, vol_db;
     float d, s;                                   /* the carrier envelope's decay, sustain */
     float ma, md, ms, mr;                         /* the modulation envelope */
+    float att;                                    /* the shortest attack, seconds */
 } inst_t;
 static const inst_t INSTR[NINSTR] = {
-    /* Piano */    {1, W_SINE, 1, W_SQUARE, 0, 3.01f, 1.5f, -8, 0.6f, 0.15f, 0.002f, 0.4f, 0.1f, 0.8f},
-    /* E.Piano */  {1, W_SINE, 1, W_SINE, 0, 2.5f, 4.0f, -6, 1.2f, 0.05f, 0.001f, 0.8f, 0.0f, 1.0f},
-    /* Organ */    {0, W_SAW, 3, 0, 15, 0, 0, -14, 0.1f, 0.9f, 0, 0, 0, 0},
-    /* Brass */    {0, W_SAW, 3, 0, 20, 0, 0, -14, 0.2f, 0.7f, 0, 0, 0, 0},
-    /* Strings */  {0, W_SAW, 4, 0, 25, 0, 0, -16, 0.3f, 0.8f, 0, 0, 0, 0},
-    /* Pad */      {1, W_SINE, 1, W_TRI, 0, 1.5f, 2.0f, -8, 0.5f, 0.8f, 0.3f, 0.4f, 0.6f, 1.5f},
-    /* Pluck */    {1, W_SINE, 1, W_SQUARE, 0, 5.0f, 8.0f, -6, 0.4f, 0.0f, 0.001f, 0.3f, 0.0f, 0.2f},
-    /* Bell */     {1, W_SINE, 1, W_SINE, 0, 5.07f, 12.0f, -10, 1.8f, 0.0f, 0.001f, 1.2f, 0.0f, 1.5f},
-    /* Saw */      {0, W_SAW, 1, 0, 0, 0, 0, -12, 0.15f, 0.5f, 0, 0, 0, 0},
-    /* Square */   {0, W_SQUARE, 1, 0, 0, 0, 0, -14, 0.15f, 0.5f, 0, 0, 0, 0},
-    /* Triangle */ {0, W_TRI, 1, 0, 0, 0, 0, -4, 0.15f, 0.6f, 0, 0, 0, 0},
-    /* Sine */     {0, W_SINE, 1, 0, 0, 0, 0, -3, 0.1f, 0.7f, 0, 0, 0, 0},
+    /* Piano */    {1, W_SINE, 1, W_SQUARE, 0, 3.01f, 1.5f, -8, 0.6f, 0.15f, 0.002f, 0.4f, 0.1f, 0.8f, 0},
+    /* E.Piano */  {1, W_SINE, 1, W_SINE, 0, 2.5f, 4.0f, -6, 1.2f, 0.05f, 0.001f, 0.8f, 0.0f, 1.0f, 0},
+    /* Organ */    {K_ORGAN, W_SINE, 1, 0, 0, 0, 0, -11, 0.1f, 1.0f, 0, 0, 0, 0, 0},
+    /* Brass */    {K_BRASS, W_SAW, 2, 0, 12, 0, 0, -6, 0.3f, 0.8f, 0, 0, 0, 0, 0.05f},
+    /* Strings */  {K_STRINGS, W_SAW, 4, 0, 22, 0, 0, -6, 0.4f, 0.9f, 0, 0, 0, 0, 0.3f},
+    /* Pad */      {1, W_SINE, 1, W_TRI, 0, 1.5f, 2.0f, -8, 0.5f, 0.8f, 0.3f, 0.4f, 0.6f, 1.5f, 0},
+    /* Pluck */    {1, W_SINE, 1, W_SQUARE, 0, 5.0f, 8.0f, -6, 0.4f, 0.0f, 0.001f, 0.3f, 0.0f, 0.2f, 0},
+    /* Bell */     {1, W_SINE, 1, W_SINE, 0, 5.07f, 12.0f, -10, 1.8f, 0.0f, 0.001f, 1.2f, 0.0f, 1.5f, 0},
+    /* Saw */      {0, W_SAW, 1, 0, 0, 0, 0, -12, 0.15f, 0.5f, 0, 0, 0, 0, 0},
+    /* Square */   {0, W_SQUARE, 1, 0, 0, 0, 0, -14, 0.15f, 0.5f, 0, 0, 0, 0, 0},
+    /* Triangle */ {0, W_TRI4, 1, 0, 0, 0, 0, -5, 0.15f, 0.6f, 0, 0, 0, 0, 0},
+    /* Sine */     {0, W_SINE, 1, 0, 0, 0, 0, -3, 0.1f, 0.7f, 0, 0, 0, 0, 0},
 };
 
 /* ============================================================ commands === */
@@ -333,6 +337,17 @@ static inline float osc(int w, float t, float dt)
             u -= 1.0f;
         return 1.0f - 4.0f * fm_fabsf(u - 0.5f);
     }
+    case W_TRI4: {                                 /* the Triangle sound: a 4-bit, 32-step triangle (as the
+                                                    * game consoles' triangle channel), its steps give it
+                                                    * the edge a smooth triangle lacks on a small speaker */
+        float u = t + 0.25f, x;
+        int lv;
+        if (u >= 1.0f)
+            u -= 1.0f;
+        x = 1.0f - 4.0f * fm_fabsf(u - 0.5f);
+        lv = (int)((x + 1.0f) * 7.999f);
+        return ((float)lv - 7.5f) * (1.0f / 7.5f);
+    }
     default: return tsin(t);
     }
 }
@@ -360,6 +375,8 @@ typedef struct {
     float env, menv;
     float ph[4], mph, dt;
     float det[4];                                 /* the fat oscillator's detune ratios */
+    float flo, fbd, fenv, fc;                     /* Brass / Strings: the filter, its envelope, its coefficient */
+    float perc, scoop, vph, vamt;                 /* Organ's percussion; Brass's pitch scoop; Strings' vibrato */
     uint32_t gate_left;                           /* arp notes: samples until their release */
     uint32_t age;
 } voice_t;
@@ -373,11 +390,13 @@ static float note_dt(int n) { return 440.0f * tunefac * fm_exp2f((float)(n - 69)
 static void env_coefs(void)
 {
     float at = par[P_ATTACK] < 1 ? 0.005f : (float)par[P_ATTACK] * 0.01f;
+    if (at < ins->att)
+        at = ins->att;
     k_att = 1.0f / (at * OM_SR);
     k_rel = tc_coef((float)par[P_RELEASE] * 0.1f);
     k_dec = tc_coef(ins->d);
     sus = ins->s;
-    if (ins->fm) {
+    if (ins->fm == K_FM) {
         k_matt = 1.0f / (fm_maxf(ins->ma, 0.001f) * OM_SR);
         k_mdec = tc_coef(ins->md);
         k_mrel = tc_coef(ins->mr);
@@ -414,7 +433,12 @@ static void voice_start(voice_t *v, int n, int tag)
         v->mph = 0.0f;
         for (k = 0; k < 4; k++)
             v->ph[k] = (float)k * 0.23f;        /* the fat saws start apart */
+        v->flo = v->fbd = v->fenv = 0.0f;
+        v->vph = (float)(n % 7) * 0.13f;        /* each string its own vibrato phase */
     }
+    v->perc = 1.0f;
+    v->scoop = 1.0f;
+    v->vamt = 0.0f;
     v->st = E_ATT;
     v->mst = E_ATT;
     v->gate_left = 0;
@@ -994,7 +1018,53 @@ static void render_voices(uint32_t n)
                     break;
                 }
             }
-            if (ins->fm) {                      /* Tone.FMSynth: the carrier's frequency moves by
+            if (ins->fm == K_ORGAN) {           /* drawbars 8', 4', 2 2/3', 2' and 1', and a
+                                                 * percussion on the third harmonic that fades in 0.3 s */
+                float p0 = v->ph[0], p2 = p0 + p0, p3 = p2 + p0, p4 = p2 + p2, p8 = p4 + p4;
+                p2 -= (float)(int)p2;
+                p3 -= (float)(int)p3;
+                p4 -= (float)(int)p4;
+                p8 -= (float)(int)p8;
+                o = (tsin(p0) + 0.8f * tsin(p2) + (0.45f + 0.9f * v->perc) * tsin(p3) + 0.5f * tsin(p4) +
+                     0.3f * tsin(p8)) * 0.33f;
+                v->perc *= 0.99992f;
+                v->ph[0] = wrap1(p0 + dt);
+            } else if (ins->fm == K_BRASS || ins->fm == K_STRINGS) {
+                int k, brass = ins->fm == K_BRASS;
+                float x = 0.0f, d0 = dt, hp;
+                if (brass) {                     /* a scoop up into the note, 1.5 % in 40 ms */
+                    d0 *= 1.0f - 0.015f * v->scoop;
+                    v->scoop *= 0.99943f;
+                } else {                         /* a vibrato that comes in after the attack */
+                    v->vamt += (0.0035f - v->vamt) * 0.00008f;
+                    d0 *= 1.0f + v->vamt * tsin(v->vph);
+                    v->vph = wrap1(v->vph + 5.3f / OM_SR);
+                }
+                for (k = 0; k < ins->count; k++) {
+                    float d = d0 * v->det[k], t = v->ph[k];
+                    x += 2.0f * t - 1.0f - blep(t, d);
+                    t += d;
+                    v->ph[k] = t >= 1.0f ? t - 1.0f : t;
+                }
+                x *= fat_gain;
+                if (!(j & 15u)) {                /* the filter: Brass opens with its envelope and closes
+                                                  * to a mellow tone; Strings stay soft and dark */
+                    float hz;
+                    if (brass) {
+                        float tgt = st == E_ATT ? 1.0f : st == E_DEC ? 0.45f : 0.0f;
+                        v->fenv += (tgt - v->fenv) * (st == E_ATT ? 0.06f : 0.012f);
+                        hz = dt * OM_SR * (1.2f + 9.0f * v->fenv);
+                    } else {
+                        hz = dt * OM_SR * 5.0f;
+                    }
+                    hz = fm_minf(hz, brass ? 7000.0f : 3200.0f);
+                    v->fc = 2.0f * fm_sinf(FM_PI * hz / OM_SR);
+                }
+                hp = x - v->flo - (brass ? 0.9f : 1.3f) * v->fbd;   /* Chamberlin state variable */
+                v->fbd = fm_flush(v->fbd + v->fc * hp);
+                v->flo = fm_flush(v->flo + v->fc * v->fbd);
+                o = v->flo;
+            } else if (ins->fm == K_FM) {        /* Tone.FMSynth: the carrier's frequency moves by
                                                  * f * index * modulator * its envelope */
                 float m;
                 if (mst == E_ATT) {
