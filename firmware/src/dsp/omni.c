@@ -132,7 +132,7 @@ void om_roman(int deg, int minor, char *b)
 /* ========================================================== parameters === */
 static const om_param_t PARAMS[P_NPARAMS] = {
     {"Voicing", 0, 4, 1},   {"Attack", 0, 100, 3},  {"Release", 1, 40, 6},  {"Level", 0, 100, 80},
-    {"Arp", 0, 4, 0},       {"Rate", 0, 5, 1},      {"Tempo", 40, 220, 120}, {"Gate", 10, 100, 70},
+    {"Arp", 0, 5, 0},       {"Rate", 0, 5, 1},      {"Tempo", 40, 220, 120}, {"Gate", 10, 100, 70},
     {"Bass", 0, 2, 0},      {"Bass tone", 0, 3, 0}, {"Bass vol", 0, 100, 80}, {"Arp oct", 1, 3, 1},
     {"Reverb", 0, 100, 25}, {"Delay", 0, 100, 0},   {"Chorus", 0, 100, 0},  {"Tremolo", 0, 100, 0},
     {"Low-pass", 0, 6, 0},  {"High-pass", 0, 5, 0}, {"Auto-filt", 0, 4, 0}, {"Vibrato", 0, 100, 0},
@@ -143,7 +143,7 @@ static const om_param_t PARAMS[P_NPARAMS] = {
 const om_param_t *om_param_info(int i) { return (i >= 0 && i < P_NPARAMS) ? &PARAMS[i] : &PARAMS[0]; }
 
 static const char *const VOICING_NAME[5] = {"Dyads", "Triads", "7ths", "9ths", "11ths"};
-static const char *const ARP_NAME[5] = {"Off", "Up", "Down", "Up-Dn", "Random"};
+static const char *const ARP_NAME[6] = {"Off", "Up", "Down", "Up-Dn", "Random", "Melody"};
 static const char *const RATE_NAME[6] = {"1/4", "1/8", "1/8T", "1/16", "1/16T", "1/32"};
 static const char *const BASS_NAME[3] = {"Off", "-1 Oct", "-2 Oct"};
 static const char *const WAVE_NAME[4] = {"Sine", "Tri", "Saw", "Square"};
@@ -190,7 +190,7 @@ void om_param_text(int i, int v, char *b)
     const char *s = 0;
     switch (i) {
     case P_VOICING: s = VOICING_NAME[v % 5]; break;
-    case P_ARPMODE: s = ARP_NAME[v % 5]; break;
+    case P_ARPMODE: s = ARP_NAME[v % 6]; break;
     case P_ARPRATE: s = RATE_NAME[v % 6]; break;
     case P_BASSMODE: s = BASS_NAME[v % 3]; break;
     case P_BASSTONE: s = WAVE_NAME[v % 4]; break;
@@ -262,7 +262,7 @@ static const inst_t INSTR[NINSTR] = {
 };
 
 /* ============================================================ commands === */
-enum { C_SET, C_NOTE, C_TAGOFF, C_ARPCLR, C_ARPADD, C_ARPGO, C_BASS, C_PANIC, C_POLY };
+enum { C_SET, C_NOTE, C_TAGOFF, C_ARPCLR, C_ARPADD, C_ARPGO, C_BASS, C_PANIC, C_POLY, C_MEL };
 #define QN 128u
 static uint32_t q[QN];
 static volatile uint32_t q_w, q_r;
@@ -281,6 +281,7 @@ void om_tag_off(int tag) { post(C_TAGOFF, tag, 0); }
 void om_bass(int n) { post(C_BASS, n < 0 ? 255 : n, 0); }
 void om_panic(void) { post(C_PANIC, 0, 0); }
 void om_poly(int n) { post(C_POLY, n, 0); }
+void om_melody(int on, int deg, int oct) { post(C_MEL, on, (deg & 0xFF) | (oct & 0xF) << 8); }
 void om_arp(const uint8_t *notes, int n)
 {
     int i;
@@ -573,6 +574,49 @@ static void arp_build(void)                     /* the web app's buildArpSequenc
     }
 }
 
+/* ---- the melody: its own clock at the arp's rate, a voice tag of its own */
+#define TAG_MEL 4
+volatile uint8_t om_mel[MEL_MAX], om_mel_len = 16, om_mel_note, om_mel_pos;
+static int mel_on, mel_deg, mel_oct, mel_pos, mel_cur = -1;
+static float mel_left;
+
+static float step_samples(void);
+static void mel_stop(void)
+{
+    mel_on = 0;
+    mel_cur = -1;
+    om_mel_note = 0;
+    tag_off(TAG_MEL);
+}
+
+static void mel_step(void)
+{
+    int len = om_mel_len ? om_mel_len : 1, v, k;
+    v = om_mel[mel_pos % len];
+    om_mel_pos = (uint8_t)(mel_pos % len);
+    if (v & MEL_NOTE) {
+        int n = om_scale_note(par[P_SCALE], par[P_ROOT], mel_oct, mel_deg + (v & 31));
+        voice_t *vv;
+        if (mel_cur >= 0)
+            note_off(mel_cur, TAG_MEL);
+        note_on(n, TAG_MEL);
+        mel_cur = n;
+        om_mel_note = (uint8_t)n;
+        for (k = 1; k < len && om_mel[(mel_pos + k) % len] == MEL_HOLD; k++)
+            ;                                   /* its length: the holds after it */
+        vv = find(n, TAG_MEL);
+        if (vv) {
+            uint32_t g = (uint32_t)(step_samples() * ((float)k - 1.0f + (float)par[P_GATE] * 0.01f));
+            vv->gate_left = g ? g : 1u;
+        }
+    } else if (!(v & MEL_HOLD) && mel_cur >= 0) {
+        note_off(mel_cur, TAG_MEL);             /* a rest */
+        mel_cur = -1;
+        om_mel_note = 0;
+    }
+    mel_pos++;
+}
+
 static float step_samples(void)
 {
     static const float BEATS[6] = {1.0f, 0.5f, 1.0f / 3.0f, 0.25f, 1.0f / 6.0f, 0.125f};
@@ -800,7 +844,7 @@ static void apply(int p, int v)
     case P_ARPMODE: case P_ARPOCT:
         if (arp_n) {
             arp_build();
-            if (par[P_ARPMODE] == 0)
+            if (par[P_ARPMODE] == 0 || par[P_ARPMODE] == ARP_MELODY)
                 arp_stop();
         }
         break;
@@ -879,6 +923,9 @@ static void apply(int p, int v)
 static void quiet(void)
 {
     int i;
+    mel_on = 0;
+    mel_cur = -1;
+    om_mel_note = 0;
     for (i = 0; i < OM_NVOICE; i++)
         vc[i].st = E_OFF;
     bs.st = E_OFF;
@@ -956,6 +1003,19 @@ static void drain(void)
         }
         case C_BASS: bass_cmd(a); break;
         case C_PANIC: quiet(); break;
+        case C_MEL:
+            if (!a) {
+                mel_stop();
+            } else {
+                mel_deg = b & 0xFF;
+                mel_oct = (b >> 8) & 0xF;
+                if (!mel_on) {                  /* from no chord: the phrase from its start */
+                    mel_on = 1;
+                    mel_pos = 0;
+                    mel_left = 0.0f;
+                }
+            }
+            break;
         case C_POLY: {                          /* fewer voices: the extra ones fade out fast */
             int i, busy = 0;
             om_poly_max = (uint8_t)(a < 4 ? 4 : a > OM_NVOICE ? OM_NVOICE : a);
@@ -1283,10 +1343,21 @@ void om_render(int32_t *out, uint32_t n, uint32_t gain_q12)
             }
             if ((float)k > arp_left)
                 k = (uint32_t)arp_left + 1u;
-            if (k > n)
-                k = n;
-            arp_left -= (float)k;
         }
+        if (mel_on) {                            /* and the melody's */
+            if (mel_left <= 0.0f) {
+                mel_step();
+                mel_left += step_samples();
+            }
+            if ((float)k > mel_left)
+                k = (uint32_t)mel_left + 1u;
+        }
+        if (k > n)
+            k = n;
+        if (om_arp_on)
+            arp_left -= (float)k;
+        if (mel_on)
+            mel_left -= (float)k;
         render_chunk(out, k, gain);
         out += 2 * k;
         n -= k;

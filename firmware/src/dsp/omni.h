@@ -65,6 +65,18 @@ void om_bass(int note);                        /* the bass plays note; < 0: let 
 void om_panic(void);                           /* everything quiet, now */
 void om_poly(int n);                           /* the most voices at once (4..12): the CPU guard */
 
+/* the melody generator (Arp mode Melody): a phrase of slots, one per arp step, each a rest (0), a hold
+ * of the note before (MEL_HOLD) or a note (MEL_NOTE | scale steps over the chord's root). The UI
+ * writes the phrase; the render plays it over the chord at the arp's rate, in the chord's key. */
+#define ARP_MELODY 5
+#define MEL_NOTE 0x80u
+#define MEL_HOLD 0x40u
+#define MEL_MAX 128
+extern volatile uint8_t om_mel[MEL_MAX], om_mel_len;
+void om_melody(int on, int deg, int oct);      /* on: over the chord on scale degree deg, from octave oct */
+extern volatile uint8_t om_mel_note;           /* the melody's note sounding, 0 none (UI) */
+extern volatile uint8_t om_mel_pos;            /* the slot playing (UI) */
+
 /* the render (audio ISR): n stereo frames, 24-bit in int32; gain Q12 (the MASTER pot) */
 void om_render(int32_t *out_lr, uint32_t n, uint32_t gain_q12);
 

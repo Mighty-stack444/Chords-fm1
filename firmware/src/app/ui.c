@@ -9,18 +9,19 @@
  *                  single notes on (LFO lit), twice again: off
  *   PLAY           HOLD: chords and notes keep sounding until the next one (or HOLD off)
  *   REC            swap the rows: notes on the white keys, chords on the black
- *   ARP            the arpeggiator on / off
+ *   ARP            the arpeggiator on / off (its Melody mode: a generated phrase over the chord)
  *   OCT- / OCT+    the octave           SELECT scale    ALGORITHM root    PRESETS sound
  *   HOME SEQ FX SEL GLO   pages PLAY, ARP, EFFECTS, FILTER, SETUP; EDIT steps through all seven
  *   KNOB 1-4       the page's four values
  *   SAVE           saves (it also saves by itself, a few seconds after a change, when quiet) */
 
-enum { V_PLAY, V_ARP, V_BASS, V_FX, V_FILTER, V_DRIVE, V_SETUP, NVIEWS };
-static const char *const VIEW_NAME[NVIEWS] = {"Play", "Arp", "Bass", "Effects", "Filter", "Drive", "Setup"};
-enum { K_LEDS = 100, K_LAYOUT, K_NONE };
+enum { V_PLAY, V_ARP, V_MELODY, V_BASS, V_FX, V_FILTER, V_DRIVE, V_SETUP, NVIEWS };
+static const char *const VIEW_NAME[NVIEWS] = {"Play", "Arp", "Melody", "Bass", "Effects", "Filter", "Drive", "Setup"};
+enum { K_LEDS = 100, K_LAYOUT, K_DENS, K_MBARS, K_MRANGE, K_MNEW, K_NONE };
 static const uint8_t VIEW_KNOB[NVIEWS][4] = {
     {P_VOICING, P_ATTACK, P_RELEASE, P_LEVEL},
     {P_ARPMODE, P_ARPRATE, P_TEMPO, P_GATE},
+    {K_DENS, K_MBARS, K_MRANGE, K_MNEW},
     {P_BASSMODE, P_BASSTONE, P_BASSVOL, K_NONE},
     {P_REVERB, P_DELAY, P_CHORUS, P_TREMOLO},
     {P_LOWPASS, P_HIGHPASS, P_AUTOFILT, P_VIBRATO},
@@ -97,6 +98,18 @@ static void scpy(char *b, const char *s)
     while ((*b++ = *s++))
         ;
 }
+static void itoa_u(uint32_t v, char *b)
+{
+    char t[12];
+    int n = 0;
+    do {
+        t[n++] = (char)('0' + v % 10u);
+        v /= 10u;
+    } while (v);
+    while (n)
+        *b++ = t[--n];
+    *b = 0;
+}
 static void scat_(char *b, const char *s)
 {
     while (*b)
@@ -115,11 +128,12 @@ static int chord_of(int deg, int n, uint8_t *out)
     return om_chord_notes(proj.par[P_SCALE], proj.par[P_ROOT], proj.par[P_OCTAVE], deg, n, out);
 }
 
+static void arp_off(void);
 /* everything quiet: the web app's update() (a new scale, root, voicing or octave) */
 static void all_off(void)
 {
     int k;
-    om_arp(0, 0);
+    arp_off();
     om_tag_off(TAG_CHORD);
     om_tag_off(TAG_MELODY);
     om_bass(-1);
@@ -133,6 +147,138 @@ static void play_bass(const uint8_t *notes)
     int m = proj.par[P_BASSMODE];
     if (m)
         om_bass(notes[0] - 12 * m);
+}
+
+/* ------------------------------------------------------------- the melody --- */
+/* A phrase of 1, 2 or 4 bars, one slot per arp step, written into om_mel for the render to play over
+ * the chord. Its pitches are scale steps over the chord's root, so it follows the chords: on the
+ * beats it lands on chord tones (root, third, fifth, and an octave up), between them it walks the
+ * scale. Bar 1 is a motif; the next bars repeat it, with their ends varied, and the phrase ends on
+ * the root. Density sets how many slots get a note. The seed makes it repeatable: the same seed and
+ * settings give the same phrase, a new one ("New") another. */
+static uint32_t mel_rng;
+static uint32_t rnd(uint32_t n)
+{
+    mel_rng ^= mel_rng << 13;
+    mel_rng ^= mel_rng >> 17;
+    mel_rng ^= mel_rng << 5;
+    return n ? mel_rng % n : 0;
+}
+static int mel_spb(void)                      /* slots in a bar, by the arp's rate */
+{
+    static const uint8_t SPB[6] = {4, 8, 12, 16, 24, 32};
+    return SPB[proj.par[P_ARPRATE] % 6];
+}
+static int chord_tone_near(int d)             /* the chord tone (0 2 4 7 9 11: root, 3rd, 5th, up an octave) nearest d */
+{
+    static const int8_t CT[6] = {0, 2, 4, 7, 9, 11};
+    int i, best = 0, bd = 99;
+    for (i = 0; i < 6; i++) {
+        int x = CT[i] - d;
+        x = x < 0 ? -x : x;
+        if (x < bd || (x == bd && rnd(2))) {
+            bd = x;
+            best = CT[i];
+        }
+    }
+    return best;
+}
+static int walk(int d)                        /* a step along the scale, leaning back to the middle */
+{
+    int r = (int)rnd(100), step = r < 60 ? 1 : r < 85 ? 2 : 3, up = (int)rnd(100) < (d < 5 ? 65 : d > 7 ? 30 : 50);
+    d += up ? step : -step;
+    return d < 0 ? -d : d > 12 ? 24 - d : d;
+}
+/* the pitches of slots [from, to) of bar b, walking on from d */
+static int mel_pitches(int b, int from, int to, int d)
+{
+    int spb = mel_spb(), beat = spb / 4 ? spb / 4 : 1, k, p1 = -1, p2 = -2, tries;
+    for (k = b * spb + from - 1; k >= 0 && p2 < 0; k--)   /* the two notes before, to compare with */
+        if (om_mel[k] & MEL_NOTE) {
+            if (p1 < 0)
+                p1 = om_mel[k] & 31;
+            else
+                p2 = om_mel[k] & 31;
+        }
+    for (k = from; k < to; k++) {
+        uint8_t *v = (uint8_t *)&om_mel[b * spb + k];
+        int nd;
+        if (!(*v & MEL_NOTE))
+            continue;
+        for (tries = 0; tries < 6; tries++) {  /* not the same note three times running */
+            nd = walk(d);
+            if (k % beat == 0)
+                nd = chord_tone_near(nd);
+            if (!(nd == p1 && nd == p2))
+                break;
+        }
+        d = nd;
+        p2 = p1;
+        p1 = d;
+        *v = (uint8_t)(MEL_NOTE | d);
+    }
+    return d;
+}
+static void mel_generate(void)
+{
+    static const uint8_t BARS[3] = {1, 2, 4};
+    int spb = mel_spb(), bars = BARS[proj.mel_bars % 3], beat = spb / 4 ? spb / 4 : 1, half = beat / 2, k, b, d;
+    float dens = (float)proj.mel_density * 0.01f;
+    mel_rng = (uint32_t)(proj.mel_seed[0] | proj.mel_seed[1] << 8) * 2654435761u + 0x9E3779B9u;
+    if (!mel_rng)
+        mel_rng = 1;
+    if (bars * spb > MEL_MAX)
+        bars = MEL_MAX / spb;
+    for (k = 0; k < spb; k++) {               /* bar 1's rhythm */
+        int p = k == 0 ? 100 : k % beat == 0 ? (int)(30.0f + 65.0f * dens) :
+                half && k % half == 0 ? (int)(10.0f + 65.0f * dens) : (int)(55.0f * dens);
+        uint8_t prev = k ? om_mel[k - 1] : 0;
+        if ((int)rnd(100) < p)
+            om_mel[k] = MEL_NOTE;
+        else if (prev && (int)rnd(100) < 60)
+            om_mel[k] = MEL_HOLD;
+        else
+            om_mel[k] = 0;
+    }
+    d = mel_pitches(0, 0, spb, (int)rnd(2) ? 2 : 4);
+    for (b = 1; b < bars; b++) {              /* the motif again, its end varied */
+        for (k = 0; k < spb; k++)
+            om_mel[b * spb + k] = om_mel[k];
+        if (b & 1 || b == bars - 1) {
+            int from = b == bars - 1 ? spb / 3 : spb / 2;
+            d = mel_pitches(b, from, spb, d);
+        }
+    }
+    for (k = bars * spb - 1; k >= 0; k--)     /* the phrase ends on the root, low or high */
+        if (om_mel[k] & MEL_NOTE) {
+            int x = om_mel[k] & 31, prev = -1, j, end;
+            for (j = k - 1; j >= 0; j--)
+                if (om_mel[j] & MEL_NOTE) {
+                    prev = om_mel[j] & 31;
+                    break;
+                }
+            end = x > 3 ? 7 : 0;
+            if (end == prev)                  /* not the note it just played: the other root */
+                end = 7 - end;
+            om_mel[k] = (uint8_t)(MEL_NOTE | end);
+            break;
+        }
+    om_mel_len = (uint8_t)(bars * spb);
+}
+static void mel_new(void)
+{
+    uint32_t x = (plat_ms() * 2654435761u) ^ ((uint32_t)proj.mel_seed[0] << 8 | proj.mel_seed[1]) ^ 0x5BD1E995u;
+    x ^= x >> 13;
+    proj.mel_seed[0] = (uint8_t)x;
+    proj.mel_seed[1] = (uint8_t)(x >> 8);
+    mel_generate();
+}
+static int mel_oct(void) { return proj.par[P_OCTAVE] + proj.mel_range; }
+
+static void arp_off(void)
+{
+    om_arp(0, 0);
+    om_melody(0, 0, 0);
 }
 
 /* single notes: LFO held, or locked on */
@@ -150,7 +296,7 @@ static void show_chord(const uint8_t *notes, int n, int deg)
 static void chord_down(int key, int deg)
 {
     uint8_t notes[OM_MAXCHORD];
-    int n = nvoice(), full, i, arp = proj.par[P_ARPMODE] != 0;
+    int n = nvoice(), full, i, mel = proj.par[P_ARPMODE] == ARP_MELODY, arp = proj.par[P_ARPMODE] != 0 && !mel;
     if (ui.btn >> B_ENV & 1u) {                  /* ENV: one more note */
         n++;
         ui.btn_used |= 1u << B_ENV;
@@ -167,7 +313,7 @@ static void chord_down(int key, int deg)
         ui.kcount[h] = 0;
     }
     if (proj.hold)
-        om_arp(0, 0);
+        om_arp(0, 0);                            /* HOLD: the arp hands over; the melody keeps its place */
     if (arp) {
         om_arp(notes, n);
     } else {
@@ -183,13 +329,15 @@ static void chord_down(int key, int deg)
         ui.held_chord_key = (int8_t)key;
     ui.chords_down++;
     show_chord(notes, n, deg);
+    if (mel)
+        om_melody(1, deg, mel_oct());            /* the melody over this chord (it keeps its place) */
 }
 
 /* LFO pressed or let go: the chords sounding now become single notes, or full chords again. Notes
  * that stay keep sounding; only the ones that go or come are released or started. */
 static void revoice(void)
 {
-    int k, i, want_single = single(), arp = proj.par[P_ARPMODE] != 0;
+    int k, i, want_single = single(), arp = proj.par[P_ARPMODE] != 0 && proj.par[P_ARPMODE] != ARP_MELODY;
     for (k = 0; k < NKEYS_; k++) {
         uint8_t notes[OM_MAXCHORD];
         int n;
@@ -235,7 +383,7 @@ static void chord_up(int key)
         om_note(ui.kn[key][i], 0, TAG_CHORD);
     ui.kcount[key] = 0;
     if (!ui.chords_down) {                       /* the last chord key up: the arp and bass stop */
-        om_arp(0, 0);
+        arp_off();
         om_bass(-1);
     }
 }
@@ -319,6 +467,12 @@ static int knob_get(int k)
         return proj.leds;
     if (k == K_LAYOUT)
         return proj.layout;
+    if (k == K_DENS)
+        return proj.mel_density;
+    if (k == K_MBARS)
+        return proj.mel_bars;
+    if (k == K_MRANGE)
+        return proj.mel_range;
     return 0;
 }
 static void knob_range(int k, int *lo, int *hi)
@@ -328,14 +482,15 @@ static void knob_range(int k, int *lo, int *hi)
         *hi = om_param_info(k)->hi;
     } else {
         *lo = 0;
-        *hi = k == K_LEDS ? 2 : k == K_LAYOUT ? 1 : 0;
+        *hi = k == K_LEDS ? 2 : k == K_LAYOUT ? 1 : k == K_DENS ? 100 : k == K_MBARS || k == K_MRANGE ? 2 : 0;
     }
 }
 static const char *knob_name(int k)
 {
     if (k < P_NPARAMS)
         return om_param_info(k)->name;
-    return k == K_LEDS ? "Lights" : k == K_LAYOUT ? "Layout" : "";
+    return k == K_LEDS ? "Lights" : k == K_LAYOUT ? "Layout" : k == K_DENS ? "Density" : k == K_MBARS ? "Length" :
+           k == K_MRANGE ? "Register" : k == K_MNEW ? "New" : "";
 }
 static void knob_text(int k, char *b)
 {
@@ -346,6 +501,15 @@ static void knob_text(int k, char *b)
         scpy(b, v == 2 ? "Keys" : v ? "On" : "Off");
     else if (k == K_LAYOUT)
         scpy(b, v ? "Notes" : "Chords");
+    else if (k == K_DENS) {
+        itoa_u((uint32_t)v, b);
+        scat_(b, "%");
+    } else if (k == K_MBARS)
+        scpy(b, v == 2 ? "4 bars" : v ? "2 bars" : "1 bar");
+    else if (k == K_MRANGE)
+        scpy(b, v == 2 ? "High" : v ? "Mid" : "Low");
+    else if (k == K_MNEW)
+        scpy(b, "Turn");
     else
         b[0] = 0;
 }
@@ -363,9 +527,13 @@ static void knob_set(int k, int v)
         if (k == P_VOICING || k == P_SCALE || k == P_ROOT || k == P_OCTAVE)
             all_off();                           /* as the web app: a new key, everything stops */
         if (k == P_INSTR)
-            om_arp(0, 0);                        /* the web app stops the arp for a new sound */
+            arp_off();                        /* the web app stops the arp for a new sound */
         if (k == P_ARPMODE && v)
             proj.arp_last = (uint8_t)v;
+        if (k == P_ARPMODE && v != ARP_MELODY)
+            om_melody(0, 0, 0);
+        if (k == P_ARPRATE)
+            mel_generate();                      /* the phrase in the new rate's steps (the same seed) */
         if (k == P_SCALE)
             ui.last_deg = -1;
     } else if (k == K_LEDS) {
@@ -373,6 +541,14 @@ static void knob_set(int k, int v)
     } else if (k == K_LAYOUT) {
         proj.layout = (uint8_t)v;
         all_off();
+    } else if (k == K_DENS || k == K_MBARS) {
+        if (k == K_DENS)
+            proj.mel_density = (uint8_t)v;
+        else
+            proj.mel_bars = (uint8_t)v;
+        mel_generate();                          /* the same seed: the phrase's character stays */
+    } else if (k == K_MRANGE) {
+        proj.mel_range = (uint8_t)v;
     }
     mark_dirty();
 }
@@ -408,6 +584,12 @@ static void turn(int role, int k, int32_t e)
     int lo, hi;
     if (!e || k == K_NONE)
         return;
+    if (k == K_MNEW) {                           /* a turn: a new phrase */
+        mel_new();
+        say("NEW PHRASE", 0);
+        mark_dirty();
+        return;
+    }
     knob_range(k, &lo, &hi);
     knob_set(k, knob_get(k) + accel(role, e, hi - lo));
 }
@@ -433,7 +615,7 @@ static void button(int b)
         proj.hold = (uint8_t)!proj.hold;
         if (!proj.hold) {                        /* off: everything held lets go (the web app's HOLD) */
             int k;
-            om_arp(0, 0);
+            arp_off();
             om_bass(-1);
             for (k = 0; k < NKEYS_; k++)
                 if (!(ui.keys >> k & 1u) && ui.kcount[k]) {
@@ -454,7 +636,7 @@ static void button(int b)
     case B_ARP:
         if (proj.par[P_ARPMODE]) {
             knob_set(P_ARPMODE, 0);
-            om_arp(0, 0);
+            arp_off();
             say("ARP", "OFF");
         } else {
             knob_set(P_ARPMODE, proj.arp_last ? proj.arp_last : 1);
@@ -627,7 +809,8 @@ static void draw_main(void)
     h = hash(hash(h, (uint32_t)proj.par[P_SCALE] | (uint32_t)proj.par[P_ROOT] << 4 | (uint32_t)proj.par[P_OCTAVE] << 8 |
                          (uint32_t)proj.par[P_VOICING] << 12 | (uint32_t)proj.par[P_ARPMODE] << 16 |
                          (uint32_t)proj.par[P_BASSMODE] << 20 | (uint32_t)proj.par[P_ARPRATE] << 24),
-             (uint32_t)om_arp_on | (uint32_t)om_arp_note << 1 | (uint32_t)om_bass_note << 8);
+             (uint32_t)om_arp_on | (uint32_t)om_arp_note << 1 | (uint32_t)om_bass_note << 8 |
+                 (uint32_t)om_mel_note << 16 | (uint32_t)(proj.par[P_ARPMODE] == ARP_MELODY) << 24);
     if (h == ui.sig[1])
         return;
     ui.sig[1] = h;
@@ -665,7 +848,10 @@ static void draw_main(void)
             scat_(t, " ");
             om_param_text(P_ARPRATE, proj.par[P_ARPRATE], q);
             scat_(t, q);
-            x = tag(x, y, t, om_arp_on ? K_BG : K_ACC, om_arp_on ? K_ACC : RGB(32, 36, 60));
+            {
+                int on = om_arp_on || om_mel_note;
+                x = tag(x, y, t, on ? K_BG : K_ACC, on ? K_ACC : RGB(32, 36, 60));
+            }
         }
         if (proj.par[P_BASSMODE]) {
             scpy(t, "BASS");
@@ -681,17 +867,18 @@ static void draw_main(void)
             om_param_text(P_VOICING, proj.par[P_VOICING], t);
             x = tag(x, y, t, K_LABEL, K_PANEL);
         }
-        if (ui.last_note >= 0) {                 /* the last melody note, at the right */
-            scpy(t, OM_NOTE_NAME[ui.last_note % 12]);
-            {
+        {   /* at the right: the melody's note (generated, or the last black key) */
+            int mn = om_mel_note ? om_mel_note : ui.last_note;
+            if (mn >= 0) {
                 char o[4];
-                int ov = ui.last_note / 12 - 1;
+                int ov = mn / 12 - 1;
+                scpy(t, OM_NOTE_NAME[mn % 12]);
                 o[0] = (char)('0' + (ov < 0 ? 0 : ov));
                 o[1] = 0;
                 scat_(t, o);
+                cv_text(228 - text_w(&FONT_B, t), y, &FONT_B, t,
+                        om_mel_note || om_sounding[mn >> 5] >> (mn & 31) & 1u ? K_TEXT : K_DIM);
             }
-            cv_text(228 - text_w(&FONT_B, t), y, &FONT_B, t,
-                    om_sounding[ui.last_note >> 5] >> (ui.last_note & 31) & 1u ? K_TEXT : K_DIM);
         }
         (void)x;
     }
@@ -760,6 +947,8 @@ static void draw_knobs(void)
             else
                 text_c(cx, 29, &FONT_M, t, hot ? K_ACC : K_TEXT);
         }
+        if (k == K_MNEW)
+            continue;
         bw = hi > lo ? (int32_t)(44 * (v - lo) / (hi - lo)) : 0;
         cv_round(cx - 22, 54, 44, 5, 2, K_LINE);
         if (lo < 0) {
@@ -775,7 +964,7 @@ static void draw_knobs(void)
 static void leds(void)
 {
     uint32_t b = 0, k = 0, i;
-    static const int8_t VIEW_BTN[NVIEWS] = {B_HOME, B_SEQ, -1, B_FX, B_SEL, -1, B_GLO};
+    static const int8_t VIEW_BTN[NVIEWS] = {B_HOME, B_SEQ, -1, -1, B_FX, B_SEL, -1, B_GLO};
     if (VIEW_BTN[ui.view] >= 0)
         b |= 1u << VIEW_BTN[ui.view];
     else
@@ -834,6 +1023,7 @@ void ui_init(void)
     ui.held_chord_key = ui.held_note_key = -1;
     ui.last_deg = -1;
     ui.last_note = -1;
+    mel_generate();
     lcd_fill(0, 0, 240, 240, K_BG);
 }
 

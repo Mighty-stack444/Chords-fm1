@@ -99,7 +99,7 @@ do, and the installer can put M-VAVE's own firmware back. Installing is at your 
 <tr><td>ENV</td><td>Held while you play a chord: one more note in it.</td></tr>
 <tr><td>LFO</td><td>Held: chords play single notes (their root). Press it twice quickly to lock single notes on (LFO lights); twice again for chords.</td></tr>
 <tr><td>PLAY</td><td>HOLD: chords and notes keep sounding until the next one. Off lets them go.</td></tr>
-<tr><td>ARP</td><td>The arpeggiator on and off (its mode, rate, tempo and gate are on the Arp page).</td></tr>
+<tr><td>ARP</td><td>The arpeggiator on and off (its mode, rate, tempo and gate are on the Arp page). Its Melody mode plays the chord with a generated phrase over it.</td></tr>
 <tr><td>OCT− · OCT+</td><td>The octave (2 to 5).</td></tr>
 <tr><td>SELECT</td><td>Scale: Major, Minor, Dorian, Phrygian, Lydian, Mixolydian, Harmonic and Melodic minor, the pentatonics, Blues, Whole tone.</td></tr>
 <tr><td>ALGORITHM</td><td>Root.</td></tr>
@@ -109,10 +109,11 @@ do, and the installer can put M-VAVE's own firmware back. Installing is at your 
 </table>
 
 <h2>The pages</h2>
-<p>Each page puts four values on KNOB 1–4. EDIT steps through all seven.</p>
+<p>Each page puts four values on KNOB 1–4. EDIT steps through all eight.</p>
 <ul class="pages">
   <li><b>HOME: Play.</b> Voicing (dyads to 11ths), Attack, Release, Level.</li>
-  <li><b>SEQ: Arp.</b> Mode (up, down, up-down, random), Rate (1/4 to 1/32, with triplets), Tempo, Gate.</li>
+  <li><b>SEQ: Arp.</b> Mode (up, down, up-down, random, melody), Rate (1/4 to 1/32, with triplets), Tempo, Gate.</li>
+  <li><b>Melody.</b> For the Melody mode: Density, Length (1, 2, 4 bars), Register (low, mid, high), New (turn: a new phrase). The phrase follows your chords, lands on chord tones on the beats and ends on the root.</li>
   <li><b>Bass.</b> Off, one or two octaves under the chord; its tone and volume.</li>
   <li><b>FX: Effects.</b> Reverb, Delay (an 8th note), Chorus, Tremolo.</li>
   <li><b>SEL: Filter.</b> Low-pass, High-pass, Auto-filter, Vibrato.</li>

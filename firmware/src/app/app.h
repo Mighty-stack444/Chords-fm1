@@ -17,9 +17,12 @@ typedef struct {
     int16_t par[P_NPARAMS];              /* omni.h P_* */
     uint8_t hold;                        /* HOLD: chords and notes keep sounding after the key is let go */
     uint8_t layout;                      /* 0: chords on the white keys, notes on the black; 1: swapped */
-    uint8_t arp_last;                    /* the arp mode ARP turns back on (1..4) */
+    uint8_t arp_last;                    /* the arp mode ARP turns back on (1..5) */
     uint8_t leds;                        /* lights: 0 off, 1 keys and the buttons' glow, 2 keys only */
-    uint8_t rsv[16];                     /* room to grow: an older, shorter project loads (zeros here) */
+    uint8_t mel_set;                     /* 1: the melody's settings below are set (0.2 projects: 0) */
+    uint8_t mel_density, mel_bars, mel_range;   /* 0..100; 1, 2, 4 bars (0..2); low, mid, high (0..2) */
+    uint8_t mel_seed[2];                 /* the phrase's seed, low byte first */
+    uint8_t rsv[10];                     /* room to grow: an older, shorter project loads (zeros here) */
 } project_t;
 
 extern project_t proj;

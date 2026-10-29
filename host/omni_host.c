@@ -377,7 +377,29 @@ static int expect(const char *what, const char *val)
         got = om_nvoices;
     else if (!strcmp(what, "arp"))
         got = om_arp_on;
-    else if (!strcmp(what, "arpnote"))
+    else if (!strcmp(what, "melnote"))           /* the melody's note sounding, 0 none */
+        got = om_mel_note;
+    else if (!strcmp(what, "mellen"))
+        got = om_mel_len;
+    else if (!strcmp(what, "melnotes")) {        /* notes in the phrase */
+        int i;
+        got = 0;
+        for (i = 0; i < om_mel_len; i++)
+            got += (om_mel[i] & MEL_NOTE) != 0;
+    } else if (!strcmp(what, "melsame") || !strcmp(what, "melkeep")) {
+        /* melkeep: remember the phrase; melsame: 1 if it is the one remembered */
+        static uint32_t kept;
+        int i;
+        uint32_t h = 2166136261u;
+        for (i = 0; i < om_mel_len; i++)
+            h = (h ^ om_mel[i]) * 16777619u;
+        if (what[3] == 'k') {
+            kept = h;
+            got = 0;
+        } else {
+            got = h == kept;
+        }
+    } else if (!strcmp(what, "arpnote"))
         got = om_arp_note;
     else if (!strcmp(what, "bass"))
         got = om_bass_note;

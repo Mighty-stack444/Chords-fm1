@@ -24,6 +24,7 @@ installer are theirs, unchanged. The instrument and the UI are new.
 | NOTES tab | **Black keys**: the scale's notes, an octave above the chords. **REC** swaps the rows |
 | HOLD button | **PLAY** (lit while on) |
 | Arpeggiator mode | **ARP** turns it on and off; mode, rate, tempo and gate on the **Arp** page (SEQ) |
+| — | Arp mode **Melody**: the chord plays, with a generated phrase over it; the **Melody** page (EDIT from Arp) sets it |
 | Scale / Root / Instrument | **SELECT** / **ALGORITHM** / **PRESETS** encoders |
 | Octave | **OCT− / OCT+** |
 | Voicing, ATK, REL | **Play** page (HOME), knobs 1–3 (knob 4: level) |
@@ -38,6 +39,18 @@ installer are theirs, unchanged. The instrument and the UI are new.
 
 MIDI: notes in (USB or the TRS jack) play the current sound; chords and notes go out on channel 1,
 the bass on channel 2.
+
+### The melody generator
+
+Set the Arp mode to **Melody** (Arp page, KNOB 1; ARP then turns it on and off). Holding a chord plays the
+chord, and over it, an octave up by default, a phrase of 1, 2 or 4 bars at the arp's rate, repeating. The phrase is
+written in scale steps over the chord's root, so it follows your chord changes: on the beats it lands on chord tones,
+between them it walks the scale, and it ends on the root. Each bar after the first repeats the first with its end
+varied. It keeps its place when you change chords; it starts from the top after you let go of everything.
+
+The **Melody** page: **Density** (how many steps get a note), **Length** (1, 2, 4 bars), **Register** (Low: the
+chord's octave; Mid: one up; High: two up), **New** (turn: a new phrase). Changing Density, Length or the Rate keeps
+the phrase's character (the same seed); New rolls another. The phrase is saved with your settings.
 
 ### What is different
 

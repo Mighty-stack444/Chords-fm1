@@ -1,0 +1,78 @@
+# the melody generator: Arp mode Melody plays the chord with a phrase over it, an octave up, that follows
+# the chords; the Melody page sets its density, length and register, and rolls a new one
+wait 200
+tap SEQ
+expect view 1
+spin K1 5
+expect par4 5
+# the default phrase: 2 bars of 8ths (16 slots)
+expect mellen 16
+expect melnotes >4
+expect melkeep 0
+# I (C major): the chord sounds, and the melody over it
+key w0 down
+wait 40
+expect on48 1
+expect on52 1
+expect on55 1
+expect melnote >59
+wav melody.wav
+wait 2000
+
+# to V: the melody carries on over G
+key w4 down
+wait 20
+key w0 up
+wait 1980
+key w4 up
+wait 300
+wavstop
+expect melnote 0
+expect nsounding 0
+shot melody.png
+# the Melody page (EDIT from Arp)
+tap EDIT
+expect view 2
+# Density 100: more notes; 0: fewer
+spin K1 45
+expect melnotes >10
+spin K1 -100
+expect melnotes <9
+spin K1 55
+# the same settings again: the same phrase (the seed is kept)
+expect melsame 1
+# New: another phrase
+turn K4 1
+expect melsame 0
+expect melkeep 0
+# Length 4 bars; Rate 1/16 (Arp page): 64 slots
+spin K2 1
+expect mellen 32
+tap SEQ
+spin K2 2
+expect par5 3
+expect mellen 64
+tap EDIT
+shot melody_page.png
+# HOLD keeps it going after the key is let go
+tap PLAY
+tapkey w5
+wait 500
+expect melnote >0
+tap PLAY
+wait 300
+expect melnote 0
+# ARP off: the chord alone
+tap ARP
+expect par4 0
+key w0 down
+wait 300
+expect melnote 0
+key w0 up
+# it all comes back after a restart, the same phrase
+wait 5000
+expect melkeep 0
+reboot
+wait 100
+expect mellen 64
+expect melsame 1
