@@ -262,7 +262,7 @@ static const inst_t INSTR[NINSTR] = {
 };
 
 /* ============================================================ commands === */
-enum { C_SET, C_NOTE, C_TAGOFF, C_ARPCLR, C_ARPADD, C_ARPGO, C_BASS, C_PANIC, C_POLY, C_MEL };
+enum { C_SET, C_NOTE, C_TAGOFF, C_ARPCLR, C_ARPADD, C_ARPGO, C_BASS, C_PANIC, C_POLY, C_MEL, C_MELVOL, C_MELSW, C_MELGATE };
 #define QN 128u
 static uint32_t q[QN];
 static volatile uint32_t q_w, q_r;
@@ -282,6 +282,12 @@ void om_bass(int n) { post(C_BASS, n < 0 ? 255 : n, 0); }
 void om_panic(void) { post(C_PANIC, 0, 0); }
 void om_poly(int n) { post(C_POLY, n, 0); }
 void om_melody(int on, int deg, int oct) { post(C_MEL, on, (deg & 0xFF) | (oct & 0xF) << 8); }
+void om_mel_cfg(int vol, int swing, int gate)
+{
+    post(C_MELVOL, vol, 0);
+    post(C_MELSW, swing, 0);
+    post(C_MELGATE, gate, 0);
+}
 void om_arp(const uint8_t *notes, int n)
 {
     int i;
@@ -577,8 +583,8 @@ static void arp_build(void)                     /* the web app's buildArpSequenc
 /* ---- the melody: its own clock at the arp's rate, a voice tag of its own */
 #define TAG_MEL 4
 volatile uint8_t om_mel[MEL_MAX], om_mel_len = 16, om_mel_note, om_mel_pos;
-static int mel_on, mel_deg, mel_oct, mel_pos, mel_cur = -1;
-static float mel_left;
+static int mel_on, mel_deg, mel_oct, mel_pos, mel_cur = -1, mel_gatep = 70;
+static float mel_left, mel_gain = 1.0f, mel_sw;
 
 static float step_samples(void);
 static void mel_stop(void)
@@ -606,7 +612,7 @@ static void mel_step(void)
             ;                                   /* its length: the holds after it */
         vv = find(n, TAG_MEL);
         if (vv) {
-            uint32_t g = (uint32_t)(step_samples() * ((float)k - 1.0f + (float)par[P_GATE] * 0.01f));
+            uint32_t g = (uint32_t)(step_samples() * ((float)k - 1.0f + (float)mel_gatep * 0.01f));
             vv->gate_left = g ? g : 1u;
         }
     } else if (!(v & MEL_HOLD) && mel_cur >= 0) {
@@ -1016,6 +1022,13 @@ static void drain(void)
                 }
             }
             break;
+        case C_MELVOL: {                        /* 70 is the chord's level; 100, about twice */
+            float v = (float)a * (1.0f / 70.0f);
+            mel_gain = v * v;
+            break;
+        }
+        case C_MELSW: mel_sw = (float)a * 0.01f * 0.33f; break;
+        case C_MELGATE: mel_gatep = a < 10 ? 10 : a > 100 ? 100 : a; break;
         case C_POLY: {                          /* fewer voices: the extra ones fade out fast */
             int i, busy = 0;
             om_poly_max = (uint8_t)(a < 4 ? 4 : a > OM_NVOICE ? OM_NVOICE : a);
@@ -1046,6 +1059,7 @@ static void render_voices(uint32_t n)
         voice_t *v = &vc[i];
         float env = v->env, menv = v->menv, mph = v->mph;
         const float kr = v->tag == 254 ? fast : k_rel;
+        const float gv = v->tag == TAG_MEL ? g * mel_gain : g;   /* the melody's own volume */
         uint8_t st = v->st, mst = v->mst;
         if (st == E_OFF)
             continue;
@@ -1158,7 +1172,7 @@ static void render_voices(uint32_t n)
                 o = osc(ins->wave, v->ph[0], dt);
                 v->ph[0] = wrap1(v->ph[0] + dt);
             }
-            mono[j] += o * env * g;
+            mono[j] += o * env * gv;
         }
         v->env = env;
         v->menv = menv;
@@ -1346,8 +1360,8 @@ void om_render(int32_t *out, uint32_t n, uint32_t gain_q12)
         }
         if (mel_on) {                            /* and the melody's */
             if (mel_left <= 0.0f) {
-                mel_step();
-                mel_left += step_samples();
+                mel_step();                     /* swing: the even slots longer, the odd shorter */
+                mel_left += step_samples() * ((mel_pos & 1) ? 1.0f + mel_sw : 1.0f - mel_sw);
             }
             if ((float)k > mel_left)
                 k = (uint32_t)mel_left + 1u;

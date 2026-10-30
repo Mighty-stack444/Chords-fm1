@@ -76,3 +76,55 @@ reboot
 wait 100
 expect mellen 64
 expect melsame 1
+# ---- 0.4: the melody's shape and voice
+tap SEQ
+spin K1 5
+expect par4 5
+spin K2 -2
+expect par5 1
+tap EDIT
+tap EDIT
+expect view 3
+# Contour Rising, Leaps 0, Syncopate 0, Ends on Fifth: a new phrase each
+expect melkeep 0
+spin K2 1
+expect melsame 0
+spin K1 -100
+spin K3 -100
+spin K4 2
+shot melody_shape.png
+# the voice page: Volume 100, Octave +3, Swing 75 %, Gate 30 %
+tap EDIT
+expect view 4
+spin K1 30
+spin K2 2
+spin K3 100
+spin K4 -40
+shot melody_voice.png
+peakreset
+wav melody_voice.wav
+key w0 down
+wait 40
+expect melnote >83
+wait 2000
+key w0 up
+wait 300
+wavstop
+# Volume 0: the melody is silent, the chord plays
+spin K1 -100
+key w0 down
+wait 600
+expect on48 1
+key w0 up
+wait 300
+# the settings stay after a restart
+wait 5000
+expect melkeep 0
+reboot
+wait 100
+tap SEQ
+tap EDIT
+tap EDIT
+tap EDIT
+expect view 4
+expect melsame 1

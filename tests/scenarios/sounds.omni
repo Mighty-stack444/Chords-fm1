@@ -310,6 +310,8 @@ tap ARP
 tap EDIT
 tap EDIT
 tap EDIT
+tap EDIT
+tap EDIT
 spin K1 1
 peakreset
 wav allfx.wav

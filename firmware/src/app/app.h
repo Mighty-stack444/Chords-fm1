@@ -19,10 +19,12 @@ typedef struct {
     uint8_t layout;                      /* 0: chords on the white keys, notes on the black; 1: swapped */
     uint8_t arp_last;                    /* the arp mode ARP turns back on (1..5) */
     uint8_t leds;                        /* lights: 0 off, 1 keys and the buttons' glow, 2 keys only */
-    uint8_t mel_set;                     /* 1: the melody's settings below are set (0.2 projects: 0) */
-    uint8_t mel_density, mel_bars, mel_range;   /* 0..100; 1, 2, 4 bars (0..2); low, mid, high (0..2) */
+    uint8_t mel_set;                     /* the melody's settings below: 0 none (0.2), 1 the first four (0.3), 2 all */
+    uint8_t mel_density, mel_bars, mel_range;   /* 0..100; 1, 2, 4 bars (0..2); octave -1..+3 (0..4; 0.3: 0..2 was 0..+2) */
     uint8_t mel_seed[2];                 /* the phrase's seed, low byte first */
-    uint8_t rsv[10];                     /* room to grow: an older, shorter project loads (zeros here) */
+    uint8_t mel_vol, mel_swing, mel_gate;        /* 0..100 (70: as loud as the chord); 0..100; 10..100 % */
+    uint8_t mel_var, mel_leap, mel_contour, mel_sync, mel_end;   /* 0..100, 0..100, CON_*, 0..100, END_* */
+    uint8_t rsv[2];                     /* room to grow: an older, shorter project loads (zeros here) */
 } project_t;
 
 extern project_t proj;

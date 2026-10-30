@@ -120,7 +120,9 @@ tap HOME
 tap EDIT
 tap EDIT
 tap EDIT
-expect view 3
+tap EDIT
+tap EDIT
+expect view 5
 spin K1 1
 expect par8 1
 key w5 down

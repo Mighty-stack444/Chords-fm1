@@ -109,11 +109,13 @@ do, and the installer can put M-VAVE's own firmware back. Installing is at your 
 </table>
 
 <h2>The pages</h2>
-<p>Each page puts four values on KNOB 1–4. EDIT steps through all eight.</p>
+<p>Each page puts four values on KNOB 1–4. EDIT steps through all ten.</p>
 <ul class="pages">
   <li><b>HOME: Play.</b> Voicing (dyads to 11ths), Attack, Release, Level.</li>
   <li><b>SEQ: Arp.</b> Mode (up, down, up-down, random, melody), Rate (1/4 to 1/32, with triplets), Tempo, Gate.</li>
-  <li><b>Melody.</b> For the Melody mode: Density, Length (1, 2, 4 bars), Register (low, mid, high), New (turn: a new phrase). The phrase follows your chords, lands on chord tones on the beats and ends on the root.</li>
+  <li><b>Melody: phrase.</b> For the Melody mode: Density, Length (1, 2, 4 bars), Variation (how much later bars change), New (turn: a new phrase). The phrase follows your chords and lands on chord tones on the beats.</li>
+  <li><b>Melody: shape.</b> Leaps, Contour (free, rising, falling, arch, valley), Syncopate, Ends on (root, third, fifth, free).</li>
+  <li><b>Melody: voice.</b> Volume (its own), Octave (−1 to +3 over the chord), Swing, Gate.</li>
   <li><b>Bass.</b> Off, one or two octaves under the chord; its tone and volume.</li>
   <li><b>FX: Effects.</b> Reverb, Delay (an 8th note), Chorus, Tremolo.</li>
   <li><b>SEL: Filter.</b> Low-pass, High-pass, Auto-filter, Vibrato.</li>

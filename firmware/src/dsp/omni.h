@@ -74,6 +74,7 @@ void om_poly(int n);                           /* the most voices at once (4..12
 #define MEL_MAX 128
 extern volatile uint8_t om_mel[MEL_MAX], om_mel_len;
 void om_melody(int on, int deg, int oct);      /* on: over the chord on scale degree deg, from octave oct */
+void om_mel_cfg(int vol, int swing, int gate); /* its volume (70: the chord's), swing (0..100), note length (%) */
 extern volatile uint8_t om_mel_note;           /* the melody's note sounding, 0 none (UI) */
 extern volatile uint8_t om_mel_pos;            /* the slot playing (UI) */
 

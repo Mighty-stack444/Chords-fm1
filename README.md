@@ -48,9 +48,16 @@ written in scale steps over the chord's root, so it follows your chord changes: 
 between them it walks the scale, and it ends on the root. Each bar after the first repeats the first with its end
 varied. It keeps its place when you change chords; it starts from the top after you let go of everything.
 
-The **Melody** page: **Density** (how many steps get a note), **Length** (1, 2, 4 bars), **Register** (Low: the
-chord's octave; Mid: one up; High: two up), **New** (turn: a new phrase). Changing Density, Length or the Rate keeps
-the phrase's character (the same seed); New rolls another. The phrase is saved with your settings.
+Three pages shape it (EDIT from Arp):
+
+| Page | KNOB 1 | KNOB 2 | KNOB 3 | KNOB 4 |
+| --- | --- | --- | --- | --- |
+| Melody: phrase | Density (how many steps get a note) | Length (1, 2, 4 bars) | Variation (how much of each later bar is rewritten; 0: exact repeats) | New (turn: a new phrase) |
+| Melody: shape | Leaps (steps along the scale, or jumps) | Contour (Free, Rising, Falling, Arch, Valley) | Syncopate (notes moved off the beat, held across it) | Ends on (Root, Third, Fifth, Free) |
+| Melody: voice | Volume (its own; 70 % matches the chord) | Octave (−1 to +3 over the chord) | Swing (50 % straight to 75 %) | Gate (note length) |
+
+Changing the phrase or shape settings keeps the phrase's character (the same seed); New rolls another. Volume,
+Octave, Swing and Gate change how it plays, not the phrase. Everything is saved with your settings.
 
 ### What is different
 

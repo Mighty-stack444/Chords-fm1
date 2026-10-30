@@ -22,6 +22,8 @@ spin K3 40
 tap EDIT
 tap EDIT
 tap EDIT
+tap EDIT
+tap EDIT
 spin K1 1
 key w0 down
 key w4 down

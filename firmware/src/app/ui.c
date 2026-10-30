@@ -15,13 +15,17 @@
  *   KNOB 1-4       the page's four values
  *   SAVE           saves (it also saves by itself, a few seconds after a change, when quiet) */
 
-enum { V_PLAY, V_ARP, V_MELODY, V_BASS, V_FX, V_FILTER, V_DRIVE, V_SETUP, NVIEWS };
-static const char *const VIEW_NAME[NVIEWS] = {"Play", "Arp", "Melody", "Bass", "Effects", "Filter", "Drive", "Setup"};
-enum { K_LEDS = 100, K_LAYOUT, K_DENS, K_MBARS, K_MRANGE, K_MNEW, K_NONE };
+enum { V_PLAY, V_ARP, V_MELODY, V_MSHAPE, V_MVOICE, V_BASS, V_FX, V_FILTER, V_DRIVE, V_SETUP, NVIEWS };
+static const char *const VIEW_NAME[NVIEWS] = {"Play",   "Arp",     "Melody: phrase", "Melody: shape", "Melody: voice",
+                                              "Bass",   "Effects", "Filter",         "Drive",         "Setup"};
+enum { K_LEDS = 100, K_LAYOUT, K_DENS, K_MBARS, K_MRANGE, K_MNEW, K_MVAR, K_MLEAP, K_MCONT, K_MSYNC, K_MEND,
+       K_MVOL, K_MSWING, K_MGATE, K_NONE };
 static const uint8_t VIEW_KNOB[NVIEWS][4] = {
     {P_VOICING, P_ATTACK, P_RELEASE, P_LEVEL},
     {P_ARPMODE, P_ARPRATE, P_TEMPO, P_GATE},
-    {K_DENS, K_MBARS, K_MRANGE, K_MNEW},
+    {K_DENS, K_MBARS, K_MVAR, K_MNEW},
+    {K_MLEAP, K_MCONT, K_MSYNC, K_MEND},
+    {K_MVOL, K_MRANGE, K_MSWING, K_MGATE},
     {P_BASSMODE, P_BASSTONE, P_BASSVOL, K_NONE},
     {P_REVERB, P_DELAY, P_CHORUS, P_TREMOLO},
     {P_LOWPASS, P_HIGHPASS, P_AUTOFILT, P_VIBRATO},
@@ -153,9 +157,12 @@ static void play_bass(const uint8_t *notes)
 /* A phrase of 1, 2 or 4 bars, one slot per arp step, written into om_mel for the render to play over
  * the chord. Its pitches are scale steps over the chord's root, so it follows the chords: on the
  * beats it lands on chord tones (root, third, fifth, and an octave up), between them it walks the
- * scale. Bar 1 is a motif; the next bars repeat it, with their ends varied, and the phrase ends on
- * the root. Density sets how many slots get a note. The seed makes it repeatable: the same seed and
- * settings give the same phrase, a new one ("New") another. */
+ * scale. Bar 1 is a motif; the next bars repeat it, Variation of each re-written from its end. Leaps
+ * sets how far it moves at a time, Contour its direction across a bar, Syncopation how much it plays
+ * off the beat, End the note it ends on. Density sets how many slots get a note. The seed makes it
+ * repeatable: the same seed and settings give the same phrase, a new one ("New") another. */
+enum { CON_FREE, CON_RISE, CON_FALL, CON_ARCH, CON_VALLEY, NCON };
+enum { END_ROOT, END_THIRD, END_FIFTH, END_FREE, NEND };
 static uint32_t mel_rng;
 static uint32_t rnd(uint32_t n)
 {
@@ -183,10 +190,21 @@ static int chord_tone_near(int d)             /* the chord tone (0 2 4 7 9 11: r
     }
     return best;
 }
-static int walk(int d)                        /* a step along the scale, leaning back to the middle */
+/* a move along the scale. Leaps: the larger, the more often it jumps (3 to 5 steps). Contour: the
+ * chance it goes up, by where it is in the bar (t, 0..1); Free leans back to the middle */
+static int walk(int d, float t)
 {
-    int r = (int)rnd(100), step = r < 60 ? 1 : r < 85 ? 2 : 3, up = (int)rnd(100) < (d < 5 ? 65 : d > 7 ? 30 : 50);
-    d += up ? step : -step;
+    int leap = proj.mel_leap, r = (int)rnd(100), step, upp, c = proj.mel_contour % NCON;
+    int p1 = 70 - leap / 2, p2 = p1 + 20;
+    step = r < p1 ? 1 : r < p2 ? 2 : 3 + (int)rnd(3);
+    switch (c) {
+    case CON_RISE: upp = 75; break;
+    case CON_FALL: upp = 25; break;
+    case CON_ARCH: upp = t < 0.5f ? 75 : 25; break;
+    case CON_VALLEY: upp = t < 0.5f ? 25 : 75; break;
+    default: upp = d < 5 ? 65 : d > 7 ? 30 : 50; break;
+    }
+    d += (int)rnd(100) < upp ? step : -step;
     return d < 0 ? -d : d > 12 ? 24 - d : d;
 }
 /* the pitches of slots [from, to) of bar b, walking on from d */
@@ -202,11 +220,11 @@ static int mel_pitches(int b, int from, int to, int d)
         }
     for (k = from; k < to; k++) {
         uint8_t *v = (uint8_t *)&om_mel[b * spb + k];
-        int nd;
+        int nd = d;
         if (!(*v & MEL_NOTE))
             continue;
         for (tries = 0; tries < 6; tries++) {  /* not the same note three times running */
-            nd = walk(d);
+            nd = walk(d, (float)k / (float)spb);
             if (k % beat == 0)
                 nd = chord_tone_near(nd);
             if (!(nd == p1 && nd == p2))
@@ -219,50 +237,77 @@ static int mel_pitches(int b, int from, int to, int d)
     }
     return d;
 }
+/* the rhythm of slots [from, to) of bar b: Density, and Syncopation moving notes off the beat */
+static void mel_rhythm(int b, int from, int to)
+{
+    int spb = mel_spb(), beat = spb / 4 ? spb / 4 : 1, half = beat / 2, k;
+    float dens = (float)proj.mel_density * 0.01f, sy = (float)proj.mel_sync * 0.01f;
+    for (k = from; k < to; k++) {
+        int i = b * spb + k, p;
+        uint8_t prev = i ? om_mel[i - 1] : 0;
+        if (k == 0)                           /* the bar's first: kept, unless syncopated */
+            p = 100 - (int)(70.0f * sy);
+        else if (k % beat == 0)
+            p = (int)((30.0f + 65.0f * dens) * (1.0f - 0.6f * sy));
+        else if (half && k % half == 0)
+            p = (int)((10.0f + 65.0f * dens) * (1.0f + 0.6f * sy));
+        else
+            p = (int)(55.0f * dens * (1.0f + 0.8f * sy));
+        if ((int)rnd(100) < p)
+            om_mel[i] = MEL_NOTE;
+        else if (prev && (int)rnd(100) < 60 + (int)(30.0f * sy))   /* a held note (more across beats) */
+            om_mel[i] = MEL_HOLD;
+        else
+            om_mel[i] = 0;
+    }
+}
 static void mel_generate(void)
 {
     static const uint8_t BARS[3] = {1, 2, 4};
-    int spb = mel_spb(), bars = BARS[proj.mel_bars % 3], beat = spb / 4 ? spb / 4 : 1, half = beat / 2, k, b, d;
-    float dens = (float)proj.mel_density * 0.01f;
+    int spb = mel_spb(), bars = BARS[proj.mel_bars % 3], k, b, d, c = proj.mel_contour % NCON, any = 0;
+    float var = (float)proj.mel_var * 0.01f;
     mel_rng = (uint32_t)(proj.mel_seed[0] | proj.mel_seed[1] << 8) * 2654435761u + 0x9E3779B9u;
     if (!mel_rng)
         mel_rng = 1;
     if (bars * spb > MEL_MAX)
         bars = MEL_MAX / spb;
-    for (k = 0; k < spb; k++) {               /* bar 1's rhythm */
-        int p = k == 0 ? 100 : k % beat == 0 ? (int)(30.0f + 65.0f * dens) :
-                half && k % half == 0 ? (int)(10.0f + 65.0f * dens) : (int)(55.0f * dens);
-        uint8_t prev = k ? om_mel[k - 1] : 0;
-        if ((int)rnd(100) < p)
-            om_mel[k] = MEL_NOTE;
-        else if (prev && (int)rnd(100) < 60)
-            om_mel[k] = MEL_HOLD;
-        else
-            om_mel[k] = 0;
-    }
-    d = mel_pitches(0, 0, spb, (int)rnd(2) ? 2 : 4);
-    for (b = 1; b < bars; b++) {              /* the motif again, its end varied */
+    mel_rhythm(0, 0, spb);                    /* bar 1: the motif */
+    for (k = 0; k < spb; k++)
+        any |= om_mel[k] & MEL_NOTE;
+    if (!any)
+        om_mel[0] = MEL_NOTE;                 /* never an empty bar */
+    d = c == CON_RISE || c == CON_ARCH ? (int)rnd(3) : c == CON_FALL || c == CON_VALLEY ? 7 + (int)rnd(3)
+                                                                                       : ((int)rnd(2) ? 2 : 4);
+    d = mel_pitches(0, 0, spb, d);
+    for (b = 1; b < bars; b++) {              /* the motif again, Variation of it re-written from its end */
+        int from = (int)((float)spb * (1.0f - var) + 0.5f);
         for (k = 0; k < spb; k++)
             om_mel[b * spb + k] = om_mel[k];
-        if (b & 1 || b == bars - 1) {
-            int from = b == bars - 1 ? spb / 3 : spb / 2;
+        if (from < spb) {
+            if (var > 0.5f) {
+                mel_rhythm(b, from, spb);     /* much variation: a new rhythm there too */
+                if (from == 0 && !(om_mel[b * spb] & (MEL_NOTE | MEL_HOLD)))
+                    om_mel[b * spb] = MEL_NOTE;
+            }
             d = mel_pitches(b, from, spb, d);
         }
     }
-    for (k = bars * spb - 1; k >= 0; k--)     /* the phrase ends on the root, low or high */
-        if (om_mel[k] & MEL_NOTE) {
-            int x = om_mel[k] & 31, prev = -1, j, end;
-            for (j = k - 1; j >= 0; j--)
-                if (om_mel[j] & MEL_NOTE) {
-                    prev = om_mel[j] & 31;
-                    break;
-                }
-            end = x > 3 ? 7 : 0;
-            if (end == prev)                  /* not the note it just played: the other root */
-                end = 7 - end;
-            om_mel[k] = (uint8_t)(MEL_NOTE | end);
-            break;
-        }
+    if (proj.mel_end % NEND != END_FREE)
+        for (k = bars * spb - 1; k >= 0; k--) /* the phrase ends on the root, the third or the fifth */
+            if (om_mel[k] & MEL_NOTE) {
+                static const int8_t LO[3] = {0, 2, 4}, HI[3] = {7, 9, 11};
+                int x = om_mel[k] & 31, prev = -1, j, e = proj.mel_end % NEND, end;
+                for (j = k - 1; j >= 0; j--)
+                    if (om_mel[j] & MEL_NOTE) {
+                        prev = om_mel[j] & 31;
+                        break;
+                    }
+                end = x > 5 ? HI[e] : LO[e];
+                if (end == prev)              /* not the note it just played: an octave away */
+                    end = end == HI[e] ? LO[e] : HI[e];
+                om_mel[k] = (uint8_t)(MEL_NOTE | end);
+                break;
+            }
     om_mel_len = (uint8_t)(bars * spb);
 }
 static void mel_new(void)
@@ -273,12 +318,22 @@ static void mel_new(void)
     proj.mel_seed[1] = (uint8_t)(x >> 8);
     mel_generate();
 }
-static int mel_oct(void) { return proj.par[P_OCTAVE] + proj.mel_range; }
+/* the melody's voice: its volume, swing and note length go to the render */
+static void mel_cfg(void) { om_mel_cfg(proj.mel_vol, proj.mel_swing, proj.mel_gate); }
+static int mel_oct(void) { return proj.par[P_OCTAVE] + (int)proj.mel_range - 1; }   /* mel_range: -1..+3, stored +1 */
 
+static void mel_retune(void);
 static void arp_off(void)
 {
     om_arp(0, 0);
     om_melody(0, 0, 0);
+}
+
+/* the octave changed: the melody playing moves there */
+static void mel_retune(void)
+{
+    if (proj.par[P_ARPMODE] == ARP_MELODY && ui.last_deg >= 0 && (ui.chords_down || ui.held_chord_key >= 0))
+        om_melody(1, ui.last_deg, mel_oct());
 }
 
 /* single notes: LFO held, or locked on */
@@ -459,6 +514,23 @@ static void key_event(int key, int down)
 }
 
 /* ------------------------------------------------------------ values --- */
+/* the melody's knobs: the project byte each one sets, its range, its name */
+static uint8_t *mel_field(int k)
+{
+    switch (k) {
+    case K_DENS: return &proj.mel_density;
+    case K_MBARS: return &proj.mel_bars;
+    case K_MRANGE: return &proj.mel_range;
+    case K_MVAR: return &proj.mel_var;
+    case K_MLEAP: return &proj.mel_leap;
+    case K_MCONT: return &proj.mel_contour;
+    case K_MSYNC: return &proj.mel_sync;
+    case K_MEND: return &proj.mel_end;
+    case K_MVOL: return &proj.mel_vol;
+    case K_MSWING: return &proj.mel_swing;
+    default: return &proj.mel_gate;
+    }
+}
 static int knob_get(int k)
 {
     if (k < P_NPARAMS)
@@ -467,12 +539,8 @@ static int knob_get(int k)
         return proj.leds;
     if (k == K_LAYOUT)
         return proj.layout;
-    if (k == K_DENS)
-        return proj.mel_density;
-    if (k == K_MBARS)
-        return proj.mel_bars;
-    if (k == K_MRANGE)
-        return proj.mel_range;
+    if (k >= K_DENS && k < K_NONE && k != K_MNEW)
+        return *mel_field(k);
     return 0;
 }
 static void knob_range(int k, int *lo, int *hi)
@@ -482,15 +550,33 @@ static void knob_range(int k, int *lo, int *hi)
         *hi = om_param_info(k)->hi;
     } else {
         *lo = 0;
-        *hi = k == K_LEDS ? 2 : k == K_LAYOUT ? 1 : k == K_DENS ? 100 : k == K_MBARS || k == K_MRANGE ? 2 : 0;
+        *hi = k == K_LEDS ? 2 : k == K_LAYOUT ? 1 : k == K_MBARS ? 2 : k == K_MRANGE ? 4 : k == K_MCONT ? 4 :
+              k == K_MEND ? 3 : k == K_MNEW || k == K_NONE ? 0 : 100;
+        if (k == K_MGATE)
+            *lo = 10;
     }
 }
 static const char *knob_name(int k)
 {
     if (k < P_NPARAMS)
         return om_param_info(k)->name;
-    return k == K_LEDS ? "Lights" : k == K_LAYOUT ? "Layout" : k == K_DENS ? "Density" : k == K_MBARS ? "Length" :
-           k == K_MRANGE ? "Register" : k == K_MNEW ? "New" : "";
+    switch (k) {
+    case K_LEDS: return "Lights";
+    case K_LAYOUT: return "Layout";
+    case K_DENS: return "Density";
+    case K_MBARS: return "Length";
+    case K_MRANGE: return "Octave";
+    case K_MNEW: return "New";
+    case K_MVAR: return "Variation";
+    case K_MLEAP: return "Leaps";
+    case K_MCONT: return "Contour";
+    case K_MSYNC: return "Syncopate";
+    case K_MEND: return "Ends on";
+    case K_MVOL: return "Volume";
+    case K_MSWING: return "Swing";
+    case K_MGATE: return "Gate";
+    default: return "";
+    }
 }
 static void knob_text(int k, char *b)
 {
@@ -501,14 +587,24 @@ static void knob_text(int k, char *b)
         scpy(b, v == 2 ? "Keys" : v ? "On" : "Off");
     else if (k == K_LAYOUT)
         scpy(b, v ? "Notes" : "Chords");
-    else if (k == K_DENS) {
+    else if (k == K_DENS || k == K_MVAR || k == K_MLEAP || k == K_MSYNC || k == K_MVOL || k == K_MGATE) {
         itoa_u((uint32_t)v, b);
+        scat_(b, "%");
+    } else if (k == K_MSWING) {                  /* 50 % (straight) .. 75 % */
+        itoa_u((uint32_t)(50 + v / 4), b);
         scat_(b, "%");
     } else if (k == K_MBARS)
         scpy(b, v == 2 ? "4 bars" : v ? "2 bars" : "1 bar");
-    else if (k == K_MRANGE)
-        scpy(b, v == 2 ? "High" : v ? "Mid" : "Low");
-    else if (k == K_MNEW)
+    else if (k == K_MRANGE) {                    /* octaves over the chord: -1 .. +3 */
+        static const char *const O[5] = {"-1", "0", "+1", "+2", "+3"};
+        scpy(b, O[v % 5]);
+    } else if (k == K_MCONT) {
+        static const char *const C[NCON] = {"Free", "Rising", "Falling", "Arch", "Valley"};
+        scpy(b, C[v % NCON]);
+    } else if (k == K_MEND) {
+        static const char *const E[NEND] = {"Root", "Third", "Fifth", "Free"};
+        scpy(b, E[v % NEND]);
+    } else if (k == K_MNEW)
         scpy(b, "Turn");
     else
         b[0] = 0;
@@ -541,14 +637,14 @@ static void knob_set(int k, int v)
     } else if (k == K_LAYOUT) {
         proj.layout = (uint8_t)v;
         all_off();
-    } else if (k == K_DENS || k == K_MBARS) {
-        if (k == K_DENS)
-            proj.mel_density = (uint8_t)v;
+    } else if (k >= K_DENS && k < K_NONE && k != K_MNEW) {
+        *mel_field(k) = (uint8_t)v;
+        if (k == K_MVOL || k == K_MSWING || k == K_MGATE)
+            mel_cfg();
+        else if (k == K_MRANGE)
+            mel_retune();                        /* the melody sounding moves to the new octave */
         else
-            proj.mel_bars = (uint8_t)v;
-        mel_generate();                          /* the same seed: the phrase's character stays */
-    } else if (k == K_MRANGE) {
-        proj.mel_range = (uint8_t)v;
+            mel_generate();                      /* the same seed: the phrase's character stays */
     }
     mark_dirty();
 }
@@ -964,7 +1060,7 @@ static void draw_knobs(void)
 static void leds(void)
 {
     uint32_t b = 0, k = 0, i;
-    static const int8_t VIEW_BTN[NVIEWS] = {B_HOME, B_SEQ, -1, -1, B_FX, B_SEL, -1, B_GLO};
+    static const int8_t VIEW_BTN[NVIEWS] = {B_HOME, B_SEQ, -1, -1, -1, -1, B_FX, B_SEL, -1, B_GLO};
     if (VIEW_BTN[ui.view] >= 0)
         b |= 1u << VIEW_BTN[ui.view];
     else
@@ -1024,6 +1120,7 @@ void ui_init(void)
     ui.last_deg = -1;
     ui.last_note = -1;
     mel_generate();
+    mel_cfg();
     lcd_fill(0, 0, 240, 240, K_BG);
 }
 
